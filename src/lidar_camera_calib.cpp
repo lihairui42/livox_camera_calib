@@ -331,12 +331,12 @@ int main(int argc, char **argv) {
   cv::imshow("Initial extrinsic", init_img_show);
   if(!calib_en)
   {
-   cv::imwrite("/work/catkin_ws_test/data/calib/Verity/projection.jpg", init_img_show);
+   cv::imwrite("/home/harry/data/X2-1166/1130/projection.jpg", init_img_show);
    cv::waitKey(1000);
   }
   else
   {
-    cv::imwrite("/work/catkin_ws_test/data/calib/single/init.jpg", init_img_show);
+    cv::imwrite("/home/harry/data/X2-1166/1130/init.jpg", init_img_show);
     cv::waitKey(1000);
   }
  
@@ -382,7 +382,7 @@ int main(int argc, char **argv) {
       cv::Mat test_img_show;
       cv::resize(test_img,test_img_show,cv::Size(1280,720));
       cv::imshow("粗校准外参后", test_img_show);
-      cv::imwrite("/work/catkin_ws_test/data/calib/single/rough.jpg", test_img);
+      cv::imwrite("/home/harry/data/X2-1166/1130/rough.jpg", test_img);
 
       cv::waitKey(1000);
       int iter = 0;
@@ -551,7 +551,7 @@ int main(int argc, char **argv) {
       cv::Mat opt_img_show;
       cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
       cv::imshow("Optimization result", opt_img_show);
-      cv::imwrite("/work/catkin_ws_test/data/calib/single/opt.jpg", opt_img);
+      cv::imwrite("/home/harry/data/X2-1166/1130/opt.jpg", opt_img);
 
       cv::waitKey(1000);
       Eigen::Matrix3d init_rotation;
@@ -651,7 +651,7 @@ int main(int argc, char **argv) {
     opt_img = calibra.getProjectionImg(calib_params_test,imageCalibration_pnp);
     cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
     cv::imshow("Optimization result_pnp", opt_img_show);
-    cv::imwrite("/work/catkin_ws_test/data/calib/single/opt_pnp.jpg", opt_img);
+    cv::imwrite("/home/harry/data/X2-1166/1130/opt_pnp.jpg", opt_img);
     // for (int i = 0; i < vpnp_list.size(); i++) {
     //         pnpfile << vpnp_list[i].x << "," << vpnp_list[i].y << "," << vpnp_list[i].z << "," 
     //         << vpnp_list[i].u<<","<<vpnp_list[i].v << std::endl;
