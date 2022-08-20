@@ -229,6 +229,195 @@ void roughCalib(Calibration &calibra, Vector6d &calib_params, //定义粗校准�
   }
 }
 
+/*
+*相机去畸变:针孔模型
+*/
+int Image_PinHole_Distort(cv::Mat camera_matrix_, cv::Mat dist_coeffs_, cv::Mat &image_src, cv::Mat &image_des)
+{
+  cv::Mat map1, map2;
+  cv::Size imageSize = image_src.size();
+
+  cv::initUndistortRectifyMap(camera_matrix_, dist_coeffs_, cv::Mat(),
+  cv::getOptimalNewCameraMatrix(camera_matrix_, dist_coeffs_, imageSize, 1, imageSize, 0),
+    imageSize, CV_16SC2, map1, map2);
+  cv::remap(image_src, image_des, map1, map2, cv::INTER_LINEAR);    //使用INTER_LINEAR进行remap(双线性插值)
+
+  if(0)
+  {
+    cv::Mat imageCalibration_show;
+    cv::resize(image_des, imageCalibration_show, cv::Size(1920, 1080));
+    cv::imshow("imageCalibration", imageCalibration_show);
+    cv::waitKey(100);
+  }
+    
+  return 1;
+}
+
+/*
+*相机去畸变：澳洲模型
+*/
+int Image_Ao_Distort(cv::Mat &image_src, cv::Mat &image_des)
+{
+  double f,cx,cy,k1,k2,k3,p1,p2,b1,b2;
+  double x,y,x_distorted, y_distorted,u_distorted, v_distorted, r2, r4, r6;
+  double r_coeff;
+  int    u, v;
+  int rows = image_src.rows;
+  int cols = image_src.cols;
+  int channels = image_src.channels();
+
+  //1166换相机前参数
+  // f = 4128.621268;
+  // cx = -49.668016; cy = 35.09643;
+  // k1 = 5.87858e-9;  k2 = -1.98247e-16;  k3 = 3.800816e-50;
+  // p1 = 8.99624e-8;  p2 = -3.08464e-7;
+  // w = 3.76e-6; h = 3.76e-6;
+  // b1 = 0;   b2 = 0;
+
+  //Ligeo参数
+  f = 4069.21;
+  cx = 2967.67;  cy = 1912.28;
+  k1 = -0.0729154;  k2 = 0.104495;  k3 = -0.00272189;
+  p1 = -9.4681e-6;  p2 = -0.00238498;
+  b1 = -0.0746334;  b2 = 0.0304992;
+
+
+  //1166换相机后参数
+
+  for(int jj=0; jj< rows; jj++)
+  {
+    for(int ii=0; ii<cols; ii++)
+    {
+      u = ii;
+      // v = rows - jj -1;
+      v = jj;
+
+      y = (v - cy) / f;
+      x = (u - cx - b2 * y) /(f + b1);
+      r2 = x * x + y * y;
+      r4 = r2 * r2;
+      r6 = r4 * r2;
+      r_coeff = 1.0 + k1*r2 + k2*r4 + k3*r6;
+      x_distorted = x * r_coeff + p1 * (r2 + 2*x*x) + 2*p2*x*y;
+      y_distorted = y * r_coeff + p2 * (r2 + 2*y*y) + 2*p1*x*y;
+      u_distorted = cx + x * f + x * b1 + y * b2;
+      v_distorted = cy + y * f;
+
+      double ii_distored = u_distorted;
+      // double jj_distored = rows - v_distorted - 1;
+      double jj_distored = v_distorted;
+
+      if(u_distorted >=0 && v_distorted >=0 && u_distorted < cols && v_distorted < rows)
+      {
+        // image_des.at<cv::Vec3b>(v,u) = image_src.at<cv::Vec3b>((int)v_distorted,int(u_distorted));
+        for(int c=0; c<channels; c++)
+        {
+          int u1 = ii_distored;
+          int v1 = jj_distored;
+          image_des.at<Vec3b>(v,u)[c] = image_src.at<Vec3b>(v1,u1)[c];
+        }
+      }
+      else
+      {
+        for(int c=0; c<channels; c++)
+        {
+          image_des.at<cv::Vec3b>(v,u)[c] = 0;
+        }
+      }
+
+    }
+  }
+
+  //画出去畸变图像
+  if(1)
+  {
+    cv::Mat imageCalibration_show;
+    cv::resize(image_des, imageCalibration_show, cv::Size(1920, 1080));
+    cv::imshow("imageCalibration", imageCalibration_show);
+    cv::waitKey(100);
+  }
+  return 1;
+}
+
+
+/*
+*相机去畸变：澳洲模型:改进版
+*/
+int Image_Ao1_Distort(cv::Mat &image_src, cv::Mat &image_des)
+{
+  double f,cx,cy,k1,k2,k3,p1,p2,b1,b2;
+  double x,y,x_distorted, y_distorted,u_distorted, v_distorted, r2, r4, r6;
+  double r_coeff;
+  int    u, v;
+  int rows = image_src.rows;
+  int cols = image_src.cols;
+  int channels = image_src.channels();
+
+  //Ligeo参数
+  f = 4122;
+  cx = 2963.32;  cy = 1926.82;
+  k1 = -0.0671708;  k2 = 0.0965257;  k3 = 0.0091545;
+  p1 = -8.69672e-6;  p2 = -0.00209711;
+  b1 = 0;  b2 = 0;
+
+
+  //1166换相机后参数
+
+  for(int jj=0; jj< rows; jj++)   //行：4000
+  {
+    for(int ii=0; ii<cols; ii++)  //列：6000
+    {
+      u = ii;
+      // v = rows - jj -1;
+      v = jj;
+
+      y = (v - cy) / f;
+      x = (u - cx - b2 * y) /(f + b1);
+      r2 = x * x + y * y;
+      r4 = r2 * r2;
+      r6 = r4 * r2;
+      r_coeff = 1.0 + k1*r2 + k2*r4 + k3*r6;
+      x_distorted = x * r_coeff + p1 * (r2 + 2*x*x) + 2*p2*x*y;
+      y_distorted = y * r_coeff + p2 * (r2 + 2*y*y) + 2*p1*x*y;
+      u_distorted = cx + x * f + x * b1 + y * b2;
+      v_distorted = cy + y * f;
+
+      double ii_distored = u_distorted;
+      // double jj_distored = rows - v_distorted - 1;
+      double jj_distored = v_distorted;
+
+      if(u_distorted >=0 && v_distorted >=0 && u_distorted < cols && v_distorted < rows)
+      {
+        // image_des.at<cv::Vec3b>(v,u) = image_src.at<cv::Vec3b>((int)v_distorted,int(u_distorted));
+        for(int c=0; c<channels; c++)
+        {
+          int u1 = ii_distored;
+          int v1 = jj_distored;
+          image_des.at<Vec3b>(v,u)[c] = image_src.at<Vec3b>(v1,u1)[c];
+        }
+      }
+      else
+      {
+        for(int c=0; c<channels; c++)
+        {
+          image_des.at<cv::Vec3b>(v,u)[c] = 0;
+        }
+      }
+
+    }
+  }
+
+  //画出去畸变图像
+  if(1)
+  {
+    cv::Mat imageCalibration_show;
+    cv::resize(image_des, imageCalibration_show, cv::Size(1920, 1080));
+    cv::imshow("imageCalibration", imageCalibration_show);
+    cv::waitKey(100);
+  }
+  return 1;
+}
+
 int main(int argc, char **argv) {
   ros::init(argc, argv, "lidarCamCalib");
   ros::NodeHandle nh;
@@ -281,16 +470,22 @@ int main(int argc, char **argv) {
 	dist_coeffs_.at<double>(3, 0) = dist_coeffs[3];
 	dist_coeffs_.at<double>(4, 0) = dist_coeffs[4];     //k1,k2,p1,p2,k3     
 
-// 图像畸变补偿用于点云投影
-  imageSize = calibra.image_.size();
-  cv::initUndistortRectifyMap(camera_matrix_, dist_coeffs_, cv::Mat(),
-  cv::getOptimalNewCameraMatrix(camera_matrix_, dist_coeffs_, imageSize, 1, imageSize, 0),
-    imageSize, CV_16SC2, map1, map2);
-	cv::remap(calibra.image_, imageCalibration, map1, map2, cv::INTER_LINEAR);//使用INTER_LINEAR进行remap(双线性插值)
+  // 图像畸变补偿用于点云投影
+  if(1)
+  {
+    //
+    Image_PinHole_Distort(camera_matrix_, dist_coeffs_, calibra.image_, imageCalibration);
+  }
+  else
+  {
+    // imageCalibration = calibra.image_.clone();
+    imageCalibration = cv::Mat::zeros(calibra.image_.size(),calibra.image_.type());
+    Image_Ao1_Distort(calibra.image_, imageCalibration);
+  }
 	assert(imageCalibration.data);//如果数据为空就终止执行
-	//cv::resize(imageCalibration, imageCalibration_show, cv::Size(1920, 1080));
-	//cv::imshow("imageCalibration", imageCalibration_show);
-	//cv::waitKey(100);
+
+  //图像恢复到未校准的
+  // imageCalibration = calibra.image_;
 
   Eigen::Vector3d init_euler_angle =
       calibra.init_rotation_matrix_.eulerAngles(2, 1, 0);
@@ -331,12 +526,12 @@ int main(int argc, char **argv) {
   cv::imshow("Initial extrinsic", init_img_show);
   if(!calib_en)
   {
-   cv::imwrite("/home/harry/data/X2-1166/1130/projection.jpg", init_img_show);
+   cv::imwrite("/home/harry/data/X2-1166/0215/result/projection.jpg", init_img_show);
    cv::waitKey(1000);
   }
   else
   {
-    cv::imwrite("/home/harry/data/X2-1166/1130/init.jpg", init_img_show);
+    cv::imwrite("/home/harry/data/X2-1166/0215/result/init.jpg", init_img_show);
     cv::waitKey(1000);
   }
  
@@ -372,7 +567,7 @@ int main(int argc, char **argv) {
   {
     time_t t1 = clock();
       if (use_rough_calib) {
-        roughCalib(calibra, calib_params, DEG2RAD(1),5); //粗校准次数 源代码设置：50（0.1*50），后来改成20（0.1*20）次对最终结果没影响。每个姿态角修正循环50次，为了调试方便，现改成5    VPnn 算法中dis_threshold设置为25,粗校准偏移量不修正，只修正姿态
+        roughCalib(calibra, calib_params, DEG2RAD(0.5),10); //粗校准次数 源代码设置：50（0.1*50），后来改成20（0.1*20）次对最终结果没影响。每个姿态角修正循环50次，为了调试方便，现改成5    VPnn 算法中dis_threshold设置为25,粗校准偏移量不修正，只修正姿态
       }
       time_t t2 = clock();
       std::cout << "粗校准时间:" << (double)(t2 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
@@ -382,7 +577,7 @@ int main(int argc, char **argv) {
       cv::Mat test_img_show;
       cv::resize(test_img,test_img_show,cv::Size(1280,720));
       cv::imshow("粗校准外参后", test_img_show);
-      cv::imwrite("/home/harry/data/X2-1166/1130/rough.jpg", test_img);
+      cv::imwrite("/home/harry/data/X2-1166/0215/result/rough.jpg", test_img);
 
       cv::waitKey(1000);
       int iter = 0;
@@ -479,9 +674,9 @@ int main(int argc, char **argv) {
           calib_params[4] = m_t(1);
           calib_params[5] = m_t(2);
 
-          calib_params[3] = T(0);
-          calib_params[4] = T(1);
-          calib_params[5] = T(2);
+          // calib_params[3] = T(0);
+          // calib_params[4] = T(1);
+          // calib_params[5] = T(2);
           R = rot;
           T[0] = m_t(0);
           T[1] = m_t(1);
@@ -551,7 +746,7 @@ int main(int argc, char **argv) {
       cv::Mat opt_img_show;
       cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
       cv::imshow("Optimization result", opt_img_show);
-      cv::imwrite("/home/harry/data/X2-1166/1130/opt.jpg", opt_img);
+      cv::imwrite("/home/harry/data/X2-1166/0215/result/opt.jpg", opt_img);
 
       cv::waitKey(1000);
       Eigen::Matrix3d init_rotation;
@@ -575,7 +770,7 @@ int main(int argc, char **argv) {
       double angel_Z=0.0;
       double temp=0.0;
 
-      angel_X= atan2(adjust_rotation(2,1),adjust_rotation(2,2));//Cnb：激光器和惯导的安置角
+      angel_X= atan2(adjust_rotation(2,1),adjust_rotation(2,2));      //Cnb：激光器和惯导的安置角
       
       temp= (adjust_rotation(2,0))/sqrt(1-pow(adjust_rotation(2,0),2));  
       angel_Y= -atan(temp);
@@ -589,79 +784,81 @@ int main(int argc, char **argv) {
 
    /*********************************************************优化内参***********************************************/
    /****************************************************************************************************************/
-
-    vector<Point3f> points_3D;
-    vector<Point2f> points_2D;
-    vector<vector<Point3f>> object_points_seq;
-    vector<vector<Point2f>> image_points_seq;
-   // vector<Mat> rvecsMat;                                          // 存放所有图像的旋转向量，每一副图像的旋转向量为一个mat
-   // vector<Mat> tvecsMat;  
-    cv::Mat rvecsMat;                                                // 存放所有图像的旋转向量，每一副图像的旋转向量为一个mat
-    cv::Mat tvecsMat;  
-    for (int i = 0; i < vpnp_list.size(); i++)
+    if(0)
     {
-      points_3D.push_back(Point3f(vpnp_list[i].x,vpnp_list[i].y,vpnp_list[i].z));
-      points_2D.push_back(Point2f(vpnp_list[i].u,vpnp_list[i].v));
-    }
+      vector<Point3f> points_3D;
+      vector<Point2f> points_2D;
+      vector<vector<Point3f>> object_points_seq;
+      vector<vector<Point2f>> image_points_seq;
+    // vector<Mat> rvecsMat;                                          // 存放所有图像的旋转向量，每一副图像的旋转向量为一个mat
+    // vector<Mat> tvecsMat;  
+      cv::Mat rvecsMat;                                                // 存放所有图像的旋转向量，每一副图像的旋转向量为一个mat
+      cv::Mat tvecsMat;  
+      for (int i = 0; i < vpnp_list.size(); i++)
+      {
+        points_3D.push_back(Point3f(vpnp_list[i].x,vpnp_list[i].y,vpnp_list[i].z));
+        points_2D.push_back(Point2f(vpnp_list[i].u,vpnp_list[i].v));
+      }
 
-    object_points_seq.push_back(points_3D);
-    image_points_seq.push_back(points_2D);
-    double err_first=cv::calibrateCamera(object_points_seq, image_points_seq, imageSize,camera_matrix_, dist_coeffs_, rvecsMat, tvecsMat,CALIB_USE_INTRINSIC_GUESS);
-    Mat rvecsMat_cv;
-    cv::Rodrigues(rvecsMat, rvecsMat_cv);
-    std::cout<<"vector<Mat>:"<<camera_matrix_<< std::endl;
-    std::cout<<"dist_coeffs_:"<<dist_coeffs_<< std::endl;
-    std::cout<<"rvecsMat:"<< rvecsMat_cv << std::endl;
-    std::cout<<"tvecsMat:"<< tvecsMat << std::endl;  
-  	std::cout << "重投影误差1：" << err_first << "像素" << endl << endl; 
+      object_points_seq.push_back(points_3D);
+      image_points_seq.push_back(points_2D);
+      double err_first=cv::calibrateCamera(object_points_seq, image_points_seq, imageSize,camera_matrix_, dist_coeffs_, rvecsMat, tvecsMat,CALIB_USE_INTRINSIC_GUESS);
+      Mat rvecsMat_cv;
+      cv::Rodrigues(rvecsMat, rvecsMat_cv);
+      std::cout<<"vector<Mat>:"<<camera_matrix_<< std::endl;
+      std::cout<<"dist_coeffs_:"<<dist_coeffs_<< std::endl;
+      std::cout<<"rvecsMat:"<< rvecsMat_cv << std::endl;
+      std::cout<<"tvecsMat:"<< tvecsMat << std::endl;  
+      std::cout << "重投影误差1：" << err_first << "像素" << endl << endl; 
 
     //**************************计算外参*********************************//
-    Mat r, t;
-    solvePnP(points_3D, points_2D, camera_matrix_, dist_coeffs_, r, t);
-   // Eigen::Matrix3d R
-    Mat R_cv;
-	  cv::Rodrigues(r, R_cv);  //旋转向量转化为旋转矩阵
-	 
-    cv::cv2eigen(R_cv, R);
-    cout << "R=" << endl << R << endl;
-    cv::cv2eigen(t, T);
-  	cout << "t=" << endl << T << endl;
-    Vector6d calib_params_test;
+      Mat r, t;
+      solvePnP(points_3D, points_2D, camera_matrix_, dist_coeffs_, r, t);
+    // Eigen::Matrix3d R
+      Mat R_cv;
+      cv::Rodrigues(r, R_cv);  //旋转向量转化为旋转矩阵
+    
+      cv::cv2eigen(R_cv, R);
+      cout << "R=" << endl << R << endl;
+      cv::cv2eigen(t, T);
+      cout << "t=" << endl << T << endl;
+      Vector6d calib_params_test;
 
-    //外参优化
-    Eigen::Vector3d euler = R.eulerAngles(2, 1, 0);
-    calib_params_test[0] = euler[0];
-    calib_params_test[1] = euler[1];
-    calib_params_test[2] = euler[2];
-    calib_params_test[3] =T[0];
-    calib_params_test[4] = T[0];
-    calib_params_test[5] = T[0];
+      //外参优化
+      Eigen::Vector3d euler = R.eulerAngles(2, 1, 0);
+      calib_params_test[0] = euler[0];
+      calib_params_test[1] = euler[1];
+      calib_params_test[2] = euler[2];
+      calib_params_test[3] =T[0];
+      calib_params_test[4] = T[0];
+      calib_params_test[5] = T[0];
 
-    // 估计出的内参补偿
-    cv::initUndistortRectifyMap(camera_matrix_, dist_coeffs_, cv::Mat(),
-    cv::getOptimalNewCameraMatrix(camera_matrix_, dist_coeffs_, imageSize, 1, imageSize, 0),
-      imageSize, CV_16SC2, map1, map2);
-    cv::remap(calibra.image_, imageCalibration_pnp, map1, map2, cv::INTER_LINEAR);
-    assert(imageCalibration_pnp.data);//如果数据为空就终止执行
-    cv::resize(imageCalibration_pnp, imageCalibration_show, cv::Size(1920, 1080));
-    //cv::imshow("imageCalibration_pnp", imageCalibration_show);
-   // cv::waitKey(100);
-   
-   //外参补偿并投影
-    opt_img = calibra.getProjectionImg(calib_params_test,imageCalibration_pnp);
-    cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
-    cv::imshow("Optimization result_pnp", opt_img_show);
-    cv::imwrite("/home/harry/data/X2-1166/1130/opt_pnp.jpg", opt_img);
-    // for (int i = 0; i < vpnp_list.size(); i++) {
-    //         pnpfile << vpnp_list[i].x << "," << vpnp_list[i].y << "," << vpnp_list[i].z << "," 
-    //         << vpnp_list[i].u<<","<<vpnp_list[i].v << std::endl;
-    //       }
-    pnpfile <<" camera_matrix_: "<<camera_matrix_<< std::endl;
-    pnpfile <<" dist_coeffs_: "<<dist_coeffs_<< std::endl;
-    pnpfile <<" R: "<<R << std::endl;
-    pnpfile <<" t:"<<T << std::endl;
+      // 估计出的内参补偿
+      cv::initUndistortRectifyMap(camera_matrix_, dist_coeffs_, cv::Mat(),
+      cv::getOptimalNewCameraMatrix(camera_matrix_, dist_coeffs_, imageSize, 1, imageSize, 0),
+        imageSize, CV_16SC2, map1, map2);
+      cv::remap(calibra.image_, imageCalibration_pnp, map1, map2, cv::INTER_LINEAR);
+      assert(imageCalibration_pnp.data);//如果数据为空就终止执行
+      cv::resize(imageCalibration_pnp, imageCalibration_show, cv::Size(1920, 1080));
+      //cv::imshow("imageCalibration_pnp", imageCalibration_show);
+    // cv::waitKey(100);
+    
+    //外参补偿并投影
+      opt_img = calibra.getProjectionImg(calib_params_test,imageCalibration_pnp);
+      cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
+      cv::imshow("Optimization result_pnp", opt_img_show);
+      cv::imwrite("/home/harry/data/X2-1166/0215/result/opt_pnp.jpg", opt_img);
+      // for (int i = 0; i < vpnp_list.size(); i++) {
+      //         pnpfile << vpnp_list[i].x << "," << vpnp_list[i].y << "," << vpnp_list[i].z << "," 
+      //         << vpnp_list[i].u<<","<<vpnp_list[i].v << std::endl;
+      //       }
+      pnpfile <<" camera_matrix_: "<<camera_matrix_<< std::endl;
+      pnpfile <<" dist_coeffs_: "<<dist_coeffs_<< std::endl;
+      pnpfile <<" R: "<<R << std::endl;
+      pnpfile <<" t:"<<T << std::endl;
 
-    pnpfile.close();
+      pnpfile.close();
+    }
 
     /************************************************************************************************************/
    

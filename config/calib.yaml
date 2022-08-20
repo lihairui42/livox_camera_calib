@@ -1,26 +1,26 @@
 # Data path. adjust them!
 common:
-   image_file:  "/home/harry/data/X2-1166/1130/image/2.jpg"
-   pcd_file:    "/home/harry/data/X2-1166/1130/pcd/2-24s.txt"
+   image_file:  "/home/harry/data/X2-1166/0215/image/8r.jpg"
+   pcd_file:    "/home/harry/data/X2-1166/0215/pcd/8.txt"
   #  image_file:  "/work/catkin_ws_test/data/single/FARO/2/image/1.jpg"
   #  pcd_file:    "/work/catkin_ws_test/data/single/FARO/2/pcd/indoor_2.txt"
-   result_file: "/home/harry/catkin_ws/ws_livox_camera_calib/src/livox_camera_calib/result/extrinsic.txt"
-   pnp_file:    "/home/harry/catkin_ws/ws_livox_camera_calib/src/livox_camera_calib/result/pnp.txt"
+   result_file: "/home/harry/data/X2-1166/0215/result/extrinsic.txt"
+   pnp_file:    "/home/harry/data/X2-1166/0215/result/pnp.txt"
 
 # Camera Parameters. Adjust them!
 camera:
 
-   camera_matrix: [4.06088474851278852e+03 , 0.0,      2.96314474175387159e+03 ,
-                    0.0,     4.06110151233590204e+03,  1.95627889109737134e+03 ,
-                      0.0,     0.0,      1.0     ]
+  #  camera_matrix: [4.06088474851278852e+03 , 0.0,      2.96314474175387159e+03 ,
+  #                   0.0,     4.06110151233590204e+03,  1.95627889109737134e+03 ,
+  #                     0.0,     0.0,      1.0     ]
   
-   dist_coeffs: [-6.55071602403893838e-02,8.55217454720715864e-02 ,1.71951053622130395e-03, -3.99099331815602483e-04,9.98592135689240455e-03]
+  #  dist_coeffs: [-6.55071602403893838e-02,8.55217454720715864e-02 ,1.71951053622130395e-03, -3.99099331815602483e-04,9.98592135689240455e-03]
 
 # X2-1166 更换相机后内参
-  # camera_matrix: [ 4.04208129734540853e+03 , 0.0,      2.95508108095969556e+03 ,
-  #                 0.0,    4.04208129734540853e+03,   1.90421706713020421e+03,
-  #                 0.0,     0.0,      1.0     ]
-  # dist_coeffs: [ -6.91921233389577589e-02, 9.44626245886859561e-02, -2.62049911397629421e-03, -4.28941797472128926e-04, 6.37902561568836550e-04]
+  camera_matrix: [ 4.06921e+03 , 0.0,      2.96767e+03 ,
+                  0.0,    4.06921e+03,   1.91228e+03,
+                  0.0,     0.0,      1.0     ]
+  dist_coeffs: [ -0.0729154, 0.104495, -0.00238498, -9.4681e-06, -0.00272189]
 
 
 ##飞行标定的内参

@@ -425,6 +425,8 @@ Calibration::Calibration(const std::string &image_file,
   {
     pcl::PointXYZI p;
     file_>>p.x>>p.y>>p.z>>p.intensity;
+    p.y = -p.y;
+    p.z = -p.z;
     raw_lidar_cloud_->points.push_back(p);
     ++cloudCount;
   }
@@ -1712,7 +1714,7 @@ void Calibration::buildVPnp(
     cv::resize(residual_img,residual_img_show,cv::Size(1920,1080));
     cv::imshow("residual", residual_img_show);
     cv::waitKey(100);
-    cv::imwrite("/work/catkin_ws_test/data/calib/single/residual_img.jpg", residual_img_show);
+    cv::imwrite("/home/harry/data/X2-1166/0215/result/residual_img.jpg", residual_img_show);
   }
   pcl::search::KdTree<pcl::PointXYZ>::Ptr kdtree(
       new pcl::search::KdTree<pcl::PointXYZ>());
