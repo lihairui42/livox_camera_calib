@@ -425,8 +425,8 @@ Calibration::Calibration(const std::string &image_file,
   {
     pcl::PointXYZI p;
     file_>>p.x>>p.y>>p.z>>p.intensity;
-    p.y = -p.y;
-    p.z = -p.z;
+    // p.y = -p.y;
+    // p.z = -p.z;
     raw_lidar_cloud_->points.push_back(p);
     ++cloudCount;
   }
