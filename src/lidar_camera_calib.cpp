@@ -229,9 +229,9 @@ void roughCalib(Calibration &calibra, Vector6d &calib_params, //定义粗校准�
   }
 }
 
-/*
-*相机去畸变:针孔模型
-*/
+/**********************************************/
+/*相机去畸变:针孔模型*****************************/
+/*********************************************/
 int Image_PinHole_Distort(cv::Mat camera_matrix_, cv::Mat dist_coeffs_, cv::Mat &image_src, cv::Mat &image_des)
 {
   cv::Mat map1, map2;
@@ -253,195 +253,115 @@ int Image_PinHole_Distort(cv::Mat camera_matrix_, cv::Mat dist_coeffs_, cv::Mat 
   return 1;
 }
 
-/*
-*相机去畸变：澳洲模型
-*/
-int Image_Ao_Distort(cv::Mat &image_src, cv::Mat &image_des)
+
+/**********************************************/
+/*Yaml参数读取*********************************/
+/*********************************************/
+int Yaml_Para_Deal(ros::NodeHandle &nh)
 {
-  double f,cx,cy,k1,k2,k3,p1,p2,b1,b2;
-  double x,y,x_distorted, y_distorted,u_distorted, v_distorted, r2, r4, r6;
-  double r_coeff;
-  int    u, v;
-  int rows = image_src.rows;
-  int cols = image_src.cols;
-  int channels = image_src.channels();
+  nh.param<string>("common/image_file", image_file, "");
+  nh.param<string>("common/pcd_file", pcd_file, "");
+  nh.param<string>("common/result_file", result_file, "");
+  nh.param<string>("common/pnp_file", pnp_file, "");
+  nh.param<vector<double>>("camera/camera_matrix", camera_matrix, vector<double>());
+  nh.param<vector<double>>("camera/dist_coeffs", dist_coeffs, vector<double>());
+  nh.param<bool>("calib/use_rough_calib", use_rough_calib, false);
+  nh.param<bool>("calib/calib_en", calib_en, false);
+  nh.param<bool>("calib/T_opt", T_opt, false);
+  nh.param<string>("calib/calib_config_file", calib_config_file, "");
+  nh.param<bool>("calib/use_ada_voxel", use_ada_voxel, false);
 
-  //1166换相机前参数
-  // f = 4128.621268;
-  // cx = -49.668016; cy = 35.09643;
-  // k1 = 5.87858e-9;  k2 = -1.98247e-16;  k3 = 3.800816e-50;
-  // p1 = 8.99624e-8;  p2 = -3.08464e-7;
-  // w = 3.76e-6; h = 3.76e-6;
-  // b1 = 0;   b2 = 0;
+  std::cout << "image_file path:" << image_file << std::endl;
+  std::cout << "pcd_file path:" << pcd_file << std::endl;
 
-  //Ligeo参数
-  f = 4069.21;
-  cx = 2967.67;  cy = 1912.28;
-  k1 = -0.0729154;  k2 = 0.104495;  k3 = -0.00272189;
-  p1 = -9.4681e-6;  p2 = -0.00238498;
-  b1 = -0.0746334;  b2 = 0.0304992;
+  return 0;
+}
 
-
-  //1166换相机后参数
-
-  for(int jj=0; jj< rows; jj++)
-  {
-    for(int ii=0; ii<cols; ii++)
-    {
-      u = ii;
-      // v = rows - jj -1;
-      v = jj;
-
-      y = (v - cy) / f;
-      x = (u - cx - b2 * y) /(f + b1);
-      r2 = x * x + y * y;
-      r4 = r2 * r2;
-      r6 = r4 * r2;
-      r_coeff = 1.0 + k1*r2 + k2*r4 + k3*r6;
-      x_distorted = x * r_coeff + p1 * (r2 + 2*x*x) + 2*p2*x*y;
-      y_distorted = y * r_coeff + p2 * (r2 + 2*y*y) + 2*p1*x*y;
-      u_distorted = cx + x * f + x * b1 + y * b2;
-      v_distorted = cy + y * f;
-
-      double ii_distored = u_distorted;
-      // double jj_distored = rows - v_distorted - 1;
-      double jj_distored = v_distorted;
-
-      if(u_distorted >=0 && v_distorted >=0 && u_distorted < cols && v_distorted < rows)
-      {
-        // image_des.at<cv::Vec3b>(v,u) = image_src.at<cv::Vec3b>((int)v_distorted,int(u_distorted));
-        for(int c=0; c<channels; c++)
-        {
-          int u1 = ii_distored;
-          int v1 = jj_distored;
-          image_des.at<Vec3b>(v,u)[c] = image_src.at<Vec3b>(v1,u1)[c];
-        }
-      }
-      else
-      {
-        for(int c=0; c<channels; c++)
-        {
-          image_des.at<cv::Vec3b>(v,u)[c] = 0;
-        }
-      }
-
-    }
+/**********************************************/
+/*iamge边缘提取*******************************/
+/*********************************************/
+int  Image_Edge_Deal(Calibration &calibra)
+{
+    // check rgb or gray
+  if (calibra.image_.type() == CV_8UC1) {
+    calibra.grey_image_ = calibra.image_;
+  } else if (calibra.image_.type() == CV_8UC3) {
+    cv::cvtColor(calibra.image_, calibra.grey_image_, cv::COLOR_BGR2GRAY);
+  } else {
+    std::string msg = "Unsupported image type, please use CV_8UC3 or CV_8UC1";
+    ROS_ERROR_STREAM(msg.c_str());
+    exit(-1);
   }
 
-  //画出去畸变图像
-  if(1)
+  cv::Mat edge_image;
+  calibra.edgeDetector(calibra.rgb_canny_threshold_, calibra.rgb_edge_minLen_, calibra.grey_image_, edge_image,
+               calibra.rgb_egde_cloud_);
+  std::string msg = "Sucessfully extract edge from image, edge size:" +
+                    std::to_string(calibra.rgb_egde_cloud_->size());
+  ROS_INFO_STREAM(msg.c_str());
+  std::cout << "rgb_egde size:" << calibra.rgb_egde_cloud_->size() << std::endl;
+
+  return 0;
+}
+
+/**********************************************/
+/*点云数据边缘提取*******************************/
+/*********************************************/
+int Scan_Edge_Deal(Calibration &calibra)
+{
+  calibra.lidar_edge_clouds = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
+
+  Eigen::Vector3d lwh(50, 50, 30);
+  Eigen::Vector3d origin(0, -25, -10);
+  std::vector<VoxelGrid> voxel_list;
+  std::unordered_map<VOXEL_LOC, OctoTree *> adapt_voxel_map;
+  time_t t1 = clock();
+
+  if (use_ada_voxel)
   {
-    cv::Mat imageCalibration_show;
-    cv::resize(image_des, imageCalibration_show, cv::Size(1920, 1080));
-    cv::imshow("imageCalibration", imageCalibration_show);
-    cv::waitKey(100);
+    calibra.adaptVoxel(adapt_voxel_map, calibra.voxel_auto_size_, 0.0009);
+    calibra.debugVoxel(adapt_voxel_map);
+    down_sampling_voxel(*calibra.lidar_edge_clouds, 0.05);
+    ROS_INFO_STREAM("Adaptive voxel sucess!");
+    time_t t2 = clock();
+    std::cout << "adaptive time:" << (double)(t2 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
   }
-  return 1;
+  else
+  {
+    std::unordered_map<VOXEL_LOC, Voxel *> voxel_map; 
+    calibra.initVoxel(calibra.raw_lidar_cloud_, calibra.voxel_size_, voxel_map);
+    calibra.LiDAREdgeExtraction(voxel_map, calibra.ransac_dis_threshold_, calibra.plane_size_threshold_,
+                        calibra.lidar_edge_clouds);
+    time_t t3 = clock();
+    std::cout << "voxel time:" << (double)(t3 - t1) / (CLOCKS_PER_SEC) << std::endl;
+  }
+  std::cout << "lidar edge size:" << calibra.lidar_edge_clouds->size() << std::endl;
+  return 0;
 }
 
 
-/*
-*相机去畸变：澳洲模型:改进版
-*/
-int Image_Ao1_Distort(cv::Mat &image_src, cv::Mat &image_des)
-{
-  double f,cx,cy,k1,k2,k3,p1,p2,b1,b2;
-  double x,y,x_distorted, y_distorted,u_distorted, v_distorted, r2, r4, r6;
-  double r_coeff;
-  int    u, v;
-  int rows = image_src.rows;
-  int cols = image_src.cols;
-  int channels = image_src.channels();
 
-  //Ligeo参数
-  f = 4122;
-  cx = 2963.32;  cy = 1926.82;
-  k1 = -0.0671708;  k2 = 0.0965257;  k3 = 0.0091545;
-  p1 = -8.69672e-6;  p2 = -0.00209711;
-  b1 = 0;  b2 = 0;
-
-
-  //1166换相机后参数
-
-  for(int jj=0; jj< rows; jj++)   //行：4000
-  {
-    for(int ii=0; ii<cols; ii++)  //列：6000
-    {
-      u = ii;
-      // v = rows - jj -1;
-      v = jj;
-
-      y = (v - cy) / f;
-      x = (u - cx - b2 * y) /(f + b1);
-      r2 = x * x + y * y;
-      r4 = r2 * r2;
-      r6 = r4 * r2;
-      r_coeff = 1.0 + k1*r2 + k2*r4 + k3*r6;
-      x_distorted = x * r_coeff + p1 * (r2 + 2*x*x) + 2*p2*x*y;
-      y_distorted = y * r_coeff + p2 * (r2 + 2*y*y) + 2*p1*x*y;
-      u_distorted = cx + x * f + x * b1 + y * b2;
-      v_distorted = cy + y * f;
-
-      double ii_distored = u_distorted;
-      // double jj_distored = rows - v_distorted - 1;
-      double jj_distored = v_distorted;
-
-      if(u_distorted >=0 && v_distorted >=0 && u_distorted < cols && v_distorted < rows)
-      {
-        // image_des.at<cv::Vec3b>(v,u) = image_src.at<cv::Vec3b>((int)v_distorted,int(u_distorted));
-        for(int c=0; c<channels; c++)
-        {
-          int u1 = ii_distored;
-          int v1 = jj_distored;
-          image_des.at<Vec3b>(v,u)[c] = image_src.at<Vec3b>(v1,u1)[c];
-        }
-      }
-      else
-      {
-        for(int c=0; c<channels; c++)
-        {
-          image_des.at<cv::Vec3b>(v,u)[c] = 0;
-        }
-      }
-
-    }
-  }
-
-  //画出去畸变图像
-  if(1)
-  {
-    cv::Mat imageCalibration_show;
-    cv::resize(image_des, imageCalibration_show, cv::Size(1920, 1080));
-    cv::imshow("imageCalibration", imageCalibration_show);
-    cv::waitKey(100);
-  }
-  return 1;
-}
-
+/**********************************************/
+/*主函数入口************************************/
+/*********************************************/
 int main(int argc, char **argv) {
   ros::init(argc, argv, "lidarCamCalib");
   ros::NodeHandle nh;
   ros::Rate loop_rate(0.1);
 
-  nh.param<string>("common/image_file", image_file, "");
-  nh.param<string>("common/pcd_file", pcd_file, "");
-  std::cout << "image_file path:" << image_file << std::endl;
-  nh.param<string>("common/result_file", result_file, "");
-  nh.param<string>("common/pnp_file", pnp_file, "");
- // std::cout << "pnp_file path:" << pnp_file << std::endl;
-  std::cout << "pcd_file path:" << pcd_file << std::endl;
-  nh.param<vector<double>>("camera/camera_matrix", camera_matrix,
-                           vector<double>());
-  nh.param<vector<double>>("camera/dist_coeffs", dist_coeffs, vector<double>());
-  nh.param<bool>("calib/use_rough_calib", use_rough_calib, false);
-  nh.param<bool>("calib/calib_en", calib_en, false);
-  nh.param<bool>("calib/T_opt", T_opt, false);
-  
-  nh.param<string>("calib/calib_config_file", calib_config_file, "");
- // nh.getParam("use_ada_voxel", use_ada_voxel);
-  nh.param<bool>("calib/use_ada_voxel", use_ada_voxel, false);
+  //Yaml参数读取
+  Yaml_Para_Deal(nh);
 
+  //构造函数：读取image和pcd
   Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel);
+
+  //iamge边缘提取
+  Image_Edge_Deal(calibra);
+
+  //点云边缘提取
+  Scan_Edge_Deal(calibra);
+
+
   calibra.fx_ = camera_matrix[0];
   calibra.cx_ = camera_matrix[2];
   calibra.fy_ = camera_matrix[4];
@@ -471,21 +391,8 @@ int main(int argc, char **argv) {
 	dist_coeffs_.at<double>(4, 0) = dist_coeffs[4];     //k1,k2,p1,p2,k3     
 
   // 图像畸变补偿用于点云投影
-  if(1)
-  {
-    //
-    Image_PinHole_Distort(camera_matrix_, dist_coeffs_, calibra.image_, imageCalibration);
-  }
-  else
-  {
-    // imageCalibration = calibra.image_.clone();
-    imageCalibration = cv::Mat::zeros(calibra.image_.size(),calibra.image_.type());
-    Image_Ao1_Distort(calibra.image_, imageCalibration);
-  }
+  Image_PinHole_Distort(camera_matrix_, dist_coeffs_, calibra.image_, imageCalibration);
 	assert(imageCalibration.data);//如果数据为空就终止执行
-
-  //图像恢复到未校准的
-  // imageCalibration = calibra.image_;
 
   Eigen::Vector3d init_euler_angle =
       calibra.init_rotation_matrix_.eulerAngles(2, 1, 0);

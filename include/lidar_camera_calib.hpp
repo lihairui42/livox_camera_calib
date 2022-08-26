@@ -355,6 +355,12 @@ public:
   void mergePlane(std::vector<Plane*>& origin_list, std::vector<Plane*>& merge_list);
 };
 
+
+/**********************************************/
+/*构造函数**************************************/
+/*读取image************************************/
+/*读取pcd**************************************/
+/*********************************************/
 Calibration::Calibration(const std::string &image_file,
                          const std::string &pcd_file,
                          const std::string &calib_config_file,bool use_ada_voxel)  {
@@ -363,8 +369,10 @@ Calibration::Calibration(const std::string &image_file,
   //bool use_ada_voxel = false;
   loadCalibConfig(calib_config_file);
 
+   //读取image文件
   image_ = cv::imread(image_file, cv::IMREAD_UNCHANGED);
   
+  //判断是否iamge是否读取成功
   if (!image_.data) {
     std::string msg = "Can not load image from " + image_file;
     ROS_ERROR_STREAM(msg.c_str());
@@ -373,90 +381,34 @@ Calibration::Calibration(const std::string &image_file,
     std::string msg = "Sucessfully load image!";
     ROS_INFO_STREAM(msg.c_str());
   }
+
+  //image的宽度和高度
   width_ = image_.cols;
   height_ = image_.rows;
-  
   cout<< "width_:"<<width_<<endl;
   cout<< "height_:"<<height_<<endl;  
+
   
-  // check rgb or gray
-  if (image_.type() == CV_8UC1) {
-    grey_image_ = image_;
-  } else if (image_.type() == CV_8UC3) {
-    cv::cvtColor(image_, grey_image_, cv::COLOR_BGR2GRAY);
-  } else {
-    std::string msg = "Unsupported image type, please use CV_8UC3 or CV_8UC1";
-    ROS_ERROR_STREAM(msg.c_str());
-    exit(-1);
-  }
-  cv::Mat edge_image;
-
-  edgeDetector(rgb_canny_threshold_, rgb_edge_minLen_, grey_image_, edge_image,
-               rgb_egde_cloud_);
-  std::string msg = "Sucessfully extract edge from image, edge size:" +
-                    std::to_string(rgb_egde_cloud_->size());
-  ROS_INFO_STREAM(msg.c_str());
-  std::cout << "rgb_egde size:" << rgb_egde_cloud_->size() << std::endl;
-
-
-  raw_lidar_cloud_ =
-      pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
-  ROS_INFO_STREAM("Loading point cloud from pcd file.");
-  
-  // if (!pcl::io::loadPCDFile(pcd_file, *raw_lidar_cloud_)) {
-  //   // down_sampling_voxel(*raw_lidar_cloud_, 0.02);
-  //   std::string msg = "Sucessfully load pcd, pointcloud size: " +
-  //                     std::to_string(raw_lidar_cloud_->size());
-  //   ROS_INFO_STREAM(msg.c_str());
-  // } else {
-  //   std::string msg = "Unable to load " + pcd_file;
-  //   ROS_ERROR_STREAM(msg.c_str());
-  //   exit(-1);
-  // }
-
+  //打开点云文件
   std::fstream file_;
   file_.open(pcd_file, ios::in);
   if (!file_) {
     cout << "Point Cloud File " << pcd_file << " does not exit" << endl;
     return;
   }
+
+  //读取点云文件
+  raw_lidar_cloud_ = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
+  ROS_INFO_STREAM("Loading point cloud from pcd file.");
   int cloudCount=0;
   while(!file_.eof())
   {
     pcl::PointXYZI p;
     file_>>p.x>>p.y>>p.z>>p.intensity;
-    // p.y = -p.y;
-    // p.z = -p.z;
     raw_lidar_cloud_->points.push_back(p);
     ++cloudCount;
   }
   cout<<"Read Point End"<<cloudCount<< endl;;
-
-  Eigen::Vector3d lwh(50, 50, 30);
-  Eigen::Vector3d origin(0, -25, -10);
-  std::vector<VoxelGrid> voxel_list;
-  std::unordered_map<VOXEL_LOC, OctoTree *> adapt_voxel_map;
-  time_t t1 = clock();
-
-  //cout << "use_ada_voxel "<< use_ada_voxel<<endl;
-  if (use_ada_voxel)
-  {
-    Calibration::adaptVoxel(adapt_voxel_map, voxel_auto_size_, 0.0009);
-    Calibration::debugVoxel(adapt_voxel_map);
-    down_sampling_voxel(*lidar_edge_clouds, 0.05);
-    ROS_INFO_STREAM("Adaptive voxel sucess!");
-    time_t t2 = clock();
-    std::cout << "adaptive time:" << (double)(t2 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
-  }
-  else{
-    std::unordered_map<VOXEL_LOC, Voxel *> voxel_map; 
-    initVoxel(raw_lidar_cloud_, voxel_size_, voxel_map);
-    LiDAREdgeExtraction(voxel_map, ransac_dis_threshold_, plane_size_threshold_,
-                        lidar_edge_clouds);
-    time_t t3 = clock();
-    std::cout << "voxel time:" << (double)(t3 - t1) / (CLOCKS_PER_SEC) << std::endl;
-  }
-  std::cout << "lidar edge size:" << lidar_edge_clouds->size() << std::endl;
 };
 
 bool Calibration::loadCameraConfig(const std::string &camera_file) {
