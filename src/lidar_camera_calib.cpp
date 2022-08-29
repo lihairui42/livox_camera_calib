@@ -232,10 +232,10 @@ void roughCalib(Calibration &calibra, Vector6d &calib_params, //定义粗校准�
 /**********************************************/
 /*相机去畸变:针孔模型*****************************/
 /*********************************************/
-int Image_PinHole_Distort(cv::Mat camera_matrix_, cv::Mat dist_coeffs_, cv::Mat &image_src, cv::Mat &image_des)
+int Image_PinHole_Distort(cv::Mat camera_matrix_, cv::Size &imageSize, cv::Mat dist_coeffs_, cv::Mat &image_src, cv::Mat &image_des)
 {
   cv::Mat map1, map2;
-  cv::Size imageSize = image_src.size();
+  imageSize = image_src.size();
 
   cv::initUndistortRectifyMap(camera_matrix_, dist_coeffs_, cv::Mat(),
   cv::getOptimalNewCameraMatrix(camera_matrix_, dist_coeffs_, imageSize, 1, imageSize, 0),
@@ -273,6 +273,36 @@ int Yaml_Para_Deal(ros::NodeHandle &nh)
 
   std::cout << "image_file path:" << image_file << std::endl;
   std::cout << "pcd_file path:" << pcd_file << std::endl;
+
+  return 0;
+}
+
+/**********************************************/
+/*相机参数处理**********************************/
+/*********************************************/
+int Calibration_Para_Deal(Calibration &calibra, cv::Mat &camera_matrix_, cv::Mat &dist_coeffs_)
+{
+  calibra.fx_ = camera_matrix[0];
+  calibra.cx_ = camera_matrix[2];
+  calibra.fy_ = camera_matrix[4];
+  calibra.cy_ = camera_matrix[5];
+  calibra.k1_ = dist_coeffs[0];
+  calibra.k2_ = dist_coeffs[1];
+  calibra.p1_ = dist_coeffs[2];
+  calibra.p2_ = dist_coeffs[3];
+  calibra.k3_ = dist_coeffs[4];
+
+  camera_matrix_.at<double>(0, 0) = camera_matrix[0];//Fx
+	camera_matrix_.at<double>(0, 1) = 0;
+	camera_matrix_.at<double>(0, 2) = camera_matrix[2];//Cx
+	camera_matrix_.at<double>(1, 1) = camera_matrix[4];//Fy
+	camera_matrix_.at<double>(1, 2) = camera_matrix[5];//cy
+
+  dist_coeffs_.at<double>(0, 0) = dist_coeffs[0];
+	dist_coeffs_.at<double>(1, 0) = dist_coeffs[1] ;
+	dist_coeffs_.at<double>(2, 0) = dist_coeffs[2];
+	dist_coeffs_.at<double>(3, 0) = dist_coeffs[3];
+	dist_coeffs_.at<double>(4, 0) = dist_coeffs[4];     //k1,k2,p1,p2,k3     
 
   return 0;
 }
@@ -340,6 +370,332 @@ int Scan_Edge_Deal(Calibration &calibra)
 }
 
 
+/**********************************************/
+/*image和点云初次映射****************************/
+/*********************************************/
+int Scan_Camera_Projection_First(Calibration &calibra, cv::Mat &imageCalibration, Vector6d &calib_params, Eigen::Matrix3d &R, Eigen::Vector3d &T)
+{
+  ROS_INFO_STREAM("Finish prepare!");
+  inner << calibra.fx_, 0.0, calibra.cx_, 0.0, calibra.fy_, calibra.cy_, 0.0, 0.0, 1.0;
+  distor << calibra.k1_, calibra.k2_, calibra.p1_, calibra.p2_;
+  R = calibra.init_rotation_matrix_;
+  T = calibra.init_translation_vector_;
+  std::cout << "Initial rotation matrix:" << std::endl
+            << calibra.init_rotation_matrix_ << std::endl;
+  std::cout << "Initial translation:"
+            << calibra.init_translation_vector_.transpose() << std::endl;
+
+  Eigen::Vector3d euler = R.eulerAngles(2, 1, 0);
+  calib_params[0] = euler[0];
+  calib_params[1] = euler[1];
+  calib_params[2] = euler[2];
+  calib_params[3] = T[0];
+  calib_params[4] = T[1];
+  calib_params[5] = T[2];
+
+  cv::Mat init_img = calibra.getProjectionImg(calib_params, imageCalibration);
+  cv::Mat init_img_show;
+  init_img_show=cv::Mat::zeros(init_img.size(),init_img.type());
+  cv::resize(init_img,init_img_show,cv::Size(1280,720));
+  cv::imshow("Initial extrinsic", init_img_show);
+  if(!calib_en)
+  {
+   cv::imwrite("/home/harry/data/X2-1166/0215/result/projection.jpg", init_img_show);
+   cv::waitKey(1000);
+  }
+  else
+  {
+    cv::imwrite("/home/harry/data/X2-1166/0215/result/init.jpg", init_img_show);
+    cv::waitKey(1000);
+  }
+
+  return 0;
+}
+
+/**********************************************/
+/*精校准***************************************/
+/*********************************************/
+void OptCalib(Calibration &calibra, 
+              Vector6d &calib_params, 
+              cv::Mat &imageCalibration, 
+              std::vector<VPnPData> &vpnp_list, 
+              bool &opt_flag,
+              Eigen::Matrix3d &R, Eigen::Vector3d &T)
+{
+  int iter = 0;
+  // Maximum match distance threshold: 15 pixels
+  // If initial extrinsic lead to error over 15 pixels, the algorithm will not work
+  int dis_threshold = 50; 
+
+  //不是通过迭代次数决定处理时间，而是通过dis_threshold（边缘点云与图像边缘点云距离最大值）
+  // Iteratively reducve the matching distance threshold
+  for (dis_threshold = 25; dis_threshold > 3; dis_threshold -= 1) {
+    
+    // For each distance, do twice optimization
+    for (int cnt = 0; cnt < 2; cnt++) {
+      std::cout << "Iteration:" << iter++ << " Dis:" << dis_threshold << std::endl;
+      //生成vpnp_list,用于迭代优化
+      calibra.buildVPnp(calib_params, dis_threshold, true,
+                        calibra.rgb_egde_cloud_, calibra.lidar_edge_clouds,
+                        vpnp_list);
+
+      cv::Mat projection_img = calibra.getProjectionImg(calib_params,imageCalibration);
+      cv::Mat projection_img_show;
+      cv::resize(projection_img,projection_img_show,cv::Size(1280,720));
+      cv::imshow("Optimization", projection_img_show);
+      cv::waitKey(100);
+      Eigen::Quaterniond q(R);
+      Eigen::Vector3d ori_t = T;
+      double ext[7];
+      ext[0] = q.x();
+      ext[1] = q.y();
+      ext[2] = q.z();
+      ext[3] = q.w();
+      ext[4] = T[0];
+      ext[5] = T[1];
+      ext[6] = T[2];
+      Eigen::Map<Eigen::Quaterniond> m_q = Eigen::Map<Eigen::Quaterniond>(ext);  //姿态相关四元数
+      Eigen::Map<Eigen::Vector3d> m_t = Eigen::Map<Eigen::Vector3d>(ext + 4);     //位置偏移量
+
+      ceres::LocalParameterization *q_parameterization = new ceres::EigenQuaternionParameterization();
+      ceres::Problem problem;
+
+      problem.AddParameterBlock(ext, 4, q_parameterization);
+      problem.AddParameterBlock(ext + 4, 3);
+    
+      for (auto val : vpnp_list) {
+        ceres::CostFunction *cost_function;
+        cost_function = vpnp_calib::Create(val);
+        problem.AddResidualBlock(cost_function, NULL, ext, ext + 4);
+        //problem.AddResidualBlock(cost_function, NULL, ext);
+      }
+
+      if(!T_opt)
+      {
+        problem.SetParameterBlockConstant(ext+4);
+      }
+
+      //SetParameterBlockVariable(ext+4)
+      ceres::Solver::Options options;//最后配置并运行求解器
+      options.preconditioner_type = ceres::JACOBI;
+      options.linear_solver_type = ceres::SPARSE_SCHUR;//配置增量方程的解法 SPARSE_SCHUR DENSE_QR
+      options.minimizer_progress_to_stdout = true;//输出优化过程信息
+      options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;//信任域策略 LM算法
+      // options.max_num_iterations= 10;  //迭代次数设置
+      options.num_threads = 6;//解算线程数
+      options.max_num_line_search_direction_restarts=0.5; //线性角度限制
+      
+      ceres::Solver::Summary summary;//优化信息
+      ceres::Solve(options, &problem, &summary);//求解!!!
+      std::cout << summary.BriefReport() << std::endl;
+      
+      Eigen::Matrix3d rot = m_q.toRotationMatrix();
+      Eigen::Vector3d euler_angle = rot.eulerAngles(2, 1, 0);
+      // std::cout << m_t << std::endl;
+      calib_params[0] = euler_angle[0];
+      calib_params[1] = euler_angle[1];
+      calib_params[2] = euler_angle[2];
+      calib_params[3] = m_t(0);
+      calib_params[4] = m_t(1);
+      calib_params[5] = m_t(2);
+
+      // calib_params[3] = T(0);
+      // calib_params[4] = T(1);
+      // calib_params[5] = T(2);
+      R = rot;
+      T[0] = m_t(0);
+      T[1] = m_t(1);
+      T[2] = m_t(2);
+
+      Eigen::Quaterniond opt_q(R);
+      std::cout << "旋转偏差:" << RAD2DEG(opt_q.angularDistance(q))
+                << " ,平移偏差:" << (T - ori_t).norm() << std::endl;
+      std::cout << "精细调整旋转矩阵后:"<< euler_angle[0] <<' '<<euler_angle[1] <<' '<< euler_angle[2] << std::endl;   //输出旋转矩阵
+      std::cout << "精细调整位置后:"<< T[0] <<' '<< T[1] <<' '<< T[2] << std::endl;      
+
+      if(iter>1)
+      {
+        if ( 0 && ((opt_q.angularDistance(q) < DEG2RAD(0.01) &&
+            (T - ori_t).norm() < 0.005)||( opt_q.angularDistance(q) > DEG2RAD(0.5))) )
+        {
+            opt_flag = false;
+        }
+        else
+        {
+          if ((opt_q.angularDistance(q) < DEG2RAD(0.03)) || (opt_q.angularDistance(q) > DEG2RAD(0.08))) {
+              opt_flag = false;
+          }
+        }
+      }
+      if (!opt_flag) {
+            break;
+      }
+    }
+    if (!opt_flag) {
+      break;
+    }
+  }
+  ros::Rate loop(0.5);
+}
+
+/**********************************************/
+/*精校准结果*************************************/
+/**********************************************/
+int  OptResult(Calibration &calibra,
+                Vector6d &calib_params, 
+                Eigen::Matrix3d &R, Eigen::Vector3d &T, 
+                time_t &t1, 
+               cv::Mat &opt_img, cv::Mat &opt_img_show)    
+{
+  R = Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
+          Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
+          Eigen::AngleAxisd(calib_params[2], Eigen::Vector3d::UnitX());
+  std::ofstream outfile(result_file);
+  for (int i = 0; i < 3; i++) {
+    outfile << R(i, 0) << "," << R(i, 1) << "," << R(i, 2) << "," << T[i]
+            << std::endl;
+  }
+
+  outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl;
+  Eigen::Vector3d euler_ori = R.eulerAngles(2, 1, 0);
+  outfile << RAD2DEG(euler_ori[0]) << "," << RAD2DEG(euler_ori[1]) << ","
+          << RAD2DEG(euler_ori[2]) << "," << 0 << "," << 0 << "," << 0
+          << std::endl;    
+  
+  opt_img = calibra.getProjectionImg(calib_params,imageCalibration);
+  cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
+  cv::imshow("Optimization result", opt_img_show);
+  cv::imwrite("/home/harry/data/X2-1166/0215/result/opt.jpg", opt_img);
+
+  cv::waitKey(1000);
+
+  Eigen::Matrix3d init_rotation;
+  init_rotation << 0, -1.0, 0, 0, 0, -1.0, 1, 0, 0;
+  Eigen::Matrix3d adjust_rotation;
+  
+  adjust_rotation =  R*init_rotation.inverse() ;
+  for (int i = 0; i < 3; i++) {
+    outfile << adjust_rotation(i, 0) << "," << adjust_rotation(i, 1) << "," <<adjust_rotation(i, 2) << "," << T[i]
+            << std::endl;
+  }
+  outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl;
+
+  Eigen::Vector3d adjust_euler = adjust_rotation.eulerAngles(2, 1, 0); //输出顺序为分别绕 ZYX轴的旋转角
+  outfile << RAD2DEG(adjust_euler[0]) << "," << RAD2DEG(adjust_euler[1]) << ","
+          << RAD2DEG(adjust_euler[2]) << "," << 0 << "," << 0 << "," << 0
+          << std::endl;
+
+  double angel_X=0.0;
+  double angel_Y=0.0;
+  double angel_Z=0.0;
+  double temp=0.0;
+
+  angel_X= atan2(adjust_rotation(2,1),adjust_rotation(2,2));      //Cnb：激光器和惯导的安置角
+  
+  temp= (adjust_rotation(2,0))/sqrt(1-pow(adjust_rotation(2,0),2));  
+  angel_Y= -atan(temp);
+  angel_Z = atan2(adjust_rotation(1,0),adjust_rotation(0,0));
+  outfile<<"angel_X, angel_Y,angel_Z:" << RAD2DEG(angel_X) << "," << RAD2DEG(angel_Y) << ","
+            << RAD2DEG(angel_Z) << std::endl;
+
+  time_t t3 = clock();
+  std::cout << "总校准时间:" << (double)(t3 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
+  outfile.close();
+
+  return 0;
+}
+
+/**********************************************/
+/*内参优化**************************************/
+/**********************************************/
+int  OptInner(vector<Point3f> &points_3D, vector<Point2f> &points_2D, 
+              cv::Mat &camera_matrix_, cv::Mat &dist_coeffs_, 
+              std::vector<VPnPData> &vpnp_list, cv::Size &imageSize)
+{
+  vector<vector<Point3f>> object_points_seq;
+  vector<vector<Point2f>> image_points_seq;
+  cv::Mat rvecsMat;                                                // 存放所有图像的旋转向量，每一副图像的旋转向量为一个mat
+  cv::Mat tvecsMat;  
+
+  for (int i = 0; i < vpnp_list.size(); i++)
+  {
+    points_3D.push_back(Point3f(vpnp_list[i].x,vpnp_list[i].y,vpnp_list[i].z));
+    points_2D.push_back(Point2f(vpnp_list[i].u,vpnp_list[i].v));
+  }
+
+  object_points_seq.push_back(points_3D);
+  image_points_seq.push_back(points_2D);
+  double err_first=cv::calibrateCamera(object_points_seq, image_points_seq, imageSize,camera_matrix_, dist_coeffs_, rvecsMat, tvecsMat,CALIB_USE_INTRINSIC_GUESS);
+  Mat rvecsMat_cv;
+  cv::Rodrigues(rvecsMat, rvecsMat_cv);
+  std::cout<<"vector<Mat>:"<<camera_matrix_<< std::endl;
+  std::cout<<"dist_coeffs_:"<<dist_coeffs_<< std::endl;
+  std::cout<<"rvecsMat:"<< rvecsMat_cv << std::endl;
+  std::cout<<"tvecsMat:"<< tvecsMat << std::endl;  
+  std::cout << "重投影误差1：" << err_first << "像素" << endl << endl; 
+
+  return 0;
+}
+
+
+/**********************************************/
+/*计算外参**************************************/
+/**********************************************/
+void OptOuter(Calibration &calibra, vector<Point3f> &points_3D, vector<Point2f> &points_2D, 
+              cv::Mat &camera_matrix_, cv::Mat &dist_coeffs_, 
+              Eigen::Matrix3d &R, Eigen::Vector3d &T, 
+              cv::Size &imageSize,
+              cv::Mat &opt_img, cv::Mat &opt_img_show,
+              std::ofstream &pnpfile)
+{
+  cv::Mat imageCalibration_show;
+  cv::Mat map1, map2;
+
+  Mat r, t;
+  solvePnP(points_3D, points_2D, camera_matrix_, dist_coeffs_, r, t);
+
+  Mat R_cv;
+  cv::Rodrigues(r, R_cv);  //旋转向量转化为旋转矩阵
+
+  cv::cv2eigen(R_cv, R);
+  cout << "R=" << endl << R << endl;
+  cv::cv2eigen(t, T);
+  cout << "t=" << endl << T << endl;
+  Vector6d calib_params_test;
+
+  //外参优化
+  Eigen::Vector3d euler = R.eulerAngles(2, 1, 0);
+  calib_params_test[0] = euler[0];
+  calib_params_test[1] = euler[1];
+  calib_params_test[2] = euler[2];
+  calib_params_test[3] =T[0];
+  calib_params_test[4] = T[0];
+  calib_params_test[5] = T[0];
+
+  // 估计出的内参补偿
+  cv::initUndistortRectifyMap(camera_matrix_, dist_coeffs_, cv::Mat(),
+  cv::getOptimalNewCameraMatrix(camera_matrix_, dist_coeffs_, imageSize, 1, imageSize, 0),
+  imageSize, CV_16SC2, map1, map2);
+  cv::remap(calibra.image_, imageCalibration_pnp, map1, map2, cv::INTER_LINEAR);
+  assert(imageCalibration_pnp.data);//如果数据为空就终止执行
+  cv::resize(imageCalibration_pnp, imageCalibration_show, cv::Size(1920, 1080));
+
+
+  //外参补偿并投影
+  opt_img = calibra.getProjectionImg(calib_params_test,imageCalibration_pnp);
+  cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
+  cv::imshow("Optimization result_pnp", opt_img_show);
+  cv::imwrite("/home/harry/data/X2-1166/0215/result/opt_pnp.jpg", opt_img);
+
+  pnpfile <<" camera_matrix_: "<<camera_matrix_<< std::endl;
+  pnpfile <<" dist_coeffs_: "<<dist_coeffs_<< std::endl;
+  pnpfile <<" R: "<<R << std::endl;
+  pnpfile <<" t:"<<T << std::endl;
+
+  pnpfile.close();
+
+}
+
 
 /**********************************************/
 /*主函数入口************************************/
@@ -361,415 +717,77 @@ int main(int argc, char **argv) {
   //点云边缘提取
   Scan_Edge_Deal(calibra);
 
-
-  calibra.fx_ = camera_matrix[0];
-  calibra.cx_ = camera_matrix[2];
-  calibra.fy_ = camera_matrix[4];
-  calibra.cy_ = camera_matrix[5];
-  calibra.k1_ = dist_coeffs[0];
-  calibra.k2_ = dist_coeffs[1];
-  calibra.p1_ = dist_coeffs[2];
-  calibra.p2_ = dist_coeffs[3];
-  calibra.k3_ = dist_coeffs[4];
-  
-  //图像补偿内参
+  //相机内参
   cv::Mat camera_matrix_=cv::Mat::eye(3, 3, CV_64F);
   cv::Mat dist_coeffs_=cv::Mat::zeros(5, 1, CV_64F);
-  cv::Mat imageCalibration_show;
-	cv::Size imageSize;
-  cv::Mat view, rview, map1, map2;
-  camera_matrix_.at<double>(0, 0) = camera_matrix[0];//Fx
-	camera_matrix_.at<double>(0, 1) = 0;
-	camera_matrix_.at<double>(0, 2) = camera_matrix[2];//Cx
-	camera_matrix_.at<double>(1, 1) = camera_matrix[4];//Fy
-	camera_matrix_.at<double>(1, 2) = camera_matrix[5];//cy
-
-  dist_coeffs_.at<double>(0, 0) = dist_coeffs[0];
-	dist_coeffs_.at<double>(1, 0) = dist_coeffs[1] ;
-	dist_coeffs_.at<double>(2, 0) = dist_coeffs[2];
-	dist_coeffs_.at<double>(3, 0) = dist_coeffs[3];
-	dist_coeffs_.at<double>(4, 0) = dist_coeffs[4];     //k1,k2,p1,p2,k3     
+  Calibration_Para_Deal(calibra, camera_matrix_, dist_coeffs_);
 
   // 图像畸变补偿用于点云投影
-  Image_PinHole_Distort(camera_matrix_, dist_coeffs_, calibra.image_, imageCalibration);
-	assert(imageCalibration.data);//如果数据为空就终止执行
+  cv::Size imageSize;
+  Image_PinHole_Distort(camera_matrix_, imageSize, dist_coeffs_, calibra.image_, imageCalibration);
+	assert(imageCalibration.data);
 
-  Eigen::Vector3d init_euler_angle =
-      calibra.init_rotation_matrix_.eulerAngles(2, 1, 0);
+  //初始相对姿态的旋转矩阵
+  Eigen::Vector3d init_euler_angle = calibra.init_rotation_matrix_.eulerAngles(2, 1, 0);
+
+  //初始相对位移
   Eigen::Vector3d init_transation = calibra.init_translation_vector_;
 
+  //初始相对位姿
   Vector6d calib_params;
   calib_params << init_euler_angle(0), init_euler_angle(1), init_euler_angle(2),
-      init_transation(0), init_transation(1), init_transation(2);
+                  init_transation(0), init_transation(1), init_transation(2);
 
-  std::vector<PnPData> pnp_list;
-  std::vector<VPnPData> vpnp_list;
-
-  ROS_INFO_STREAM("Finish prepare!");
+  //初次映射
   Eigen::Matrix3d R;
   Eigen::Vector3d T;
-  inner << calibra.fx_, 0.0, calibra.cx_, 0.0, calibra.fy_, calibra.cy_, 0.0,
-      0.0, 1.0;
-  distor << calibra.k1_, calibra.k2_, calibra.p1_, calibra.p2_;
-  R = calibra.init_rotation_matrix_;
-  T = calibra.init_translation_vector_;
-  std::cout << "Initial rotation matrix:" << std::endl
-            << calibra.init_rotation_matrix_ << std::endl;
-  std::cout << "Initial translation:"
-            << calibra.init_translation_vector_.transpose() << std::endl;
-  bool use_vpnp = true;
-  Eigen::Vector3d euler = R.eulerAngles(2, 1, 0);
-  calib_params[0] = euler[0];
-  calib_params[1] = euler[1];
-  calib_params[2] = euler[2];
-  calib_params[3] = T[0];
-  calib_params[4] = T[1];
-  calib_params[5] = T[2];
+  Scan_Camera_Projection_First(calibra, imageCalibration, calib_params, R, T);
 
-  cv::Mat init_img = calibra.getProjectionImg(calib_params,imageCalibration);
-  cv::Mat init_img_show;
-  init_img_show=cv::Mat::zeros(init_img.size(),init_img.type());
-  cv::resize(init_img,init_img_show,cv::Size(1280,720));
-  cv::imshow("Initial extrinsic", init_img_show);
-  if(!calib_en)
-  {
-   cv::imwrite("/home/harry/data/X2-1166/0215/result/projection.jpg", init_img_show);
-   cv::waitKey(1000);
+
+  //粗校准
+  time_t t1 = clock();
+  if (use_rough_calib) {
+    //粗校准次数 源代码设置：50（0.1*50），
+    //后来改成20（0.1*20）次对最终结果没影响。
+    //每个姿态角修正循环50次，为了调试方便，现改成5    
+    //VPnn 算法中dis_threshold设置为25,粗校准偏移量不修正，只修正姿态
+    roughCalib(calibra, calib_params, DEG2RAD(0.5),10); 
   }
-  else
-  {
-    cv::imwrite("/home/harry/data/X2-1166/0215/result/init.jpg", init_img_show);
-    cv::waitKey(1000);
-  }
- 
- if(!calib_en)
-  {
-    while (ros::ok()) 
-    {
-    sensor_msgs::PointCloud2 pub_cloud;
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr rgb_cloud(
-          new pcl::PointCloud<pcl::PointXYZRGB>);
-    // calibra.colorCloud(calib_params, 2, calibra.image_, calibra.raw_lidar_cloud_,
-    //                     rgb_cloud);
-    calibra.colorCloud(calib_params, 1, imageCalibration, calibra.raw_lidar_cloud_,
-    rgb_cloud);
+  time_t t2 = clock();
+  std::cout << "粗校准时间:" << (double)(t2 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
 
-    pcl::toROSMsg(*rgb_cloud, pub_cloud);
-    pub_cloud.header.frame_id = "livox";
-    calibra.init_rgb_cloud_pub_.publish(pub_cloud);
-    sensor_msgs::ImagePtr img_msg =
-    cv_bridge::CvImage(std_msgs::Header(), "bgr8", calibra.image_)
-          .toImageMsg();
-    calibra.image_pub_.publish(img_msg);
-    std::cout << "点击回车，重新发布！" << std::endl;
-    getchar();
-    }
 
-  }
- 
-  /***********************************************************************************************************************************************/
-  /**********************************************************粗校准及精校准优化 ***************************************************************************/
-  /*****************************************************************************************************************************************/
-  if(calib_en)
-  {
-    time_t t1 = clock();
-      if (use_rough_calib) {
-        roughCalib(calibra, calib_params, DEG2RAD(0.5),10); //粗校准次数 源代码设置：50（0.1*50），后来改成20（0.1*20）次对最终结果没影响。每个姿态角修正循环50次，为了调试方便，现改成5    VPnn 算法中dis_threshold设置为25,粗校准偏移量不修正，只修正姿态
-      }
-      time_t t2 = clock();
-      std::cout << "粗校准时间:" << (double)(t2 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
-     // calibrateCamera(object_points, image_points_seq, image_size, cameraMatrix, distCoeffs, rvecsMat, tvecsMat, 0);
+  //粗校准后的效果
+  cv::Mat test_img = calibra.getProjectionImg(calib_params,imageCalibration);
+  cv::Mat test_img_show;
+  cv::resize(test_img,test_img_show,cv::Size(1280,720));
+  cv::imshow("粗校准外参后", test_img_show);
+  cv::imwrite("/home/harry/data/X2-1166/0215/result/rough.jpg", test_img);
+  cv::waitKey(1000);
 
-      cv::Mat test_img = calibra.getProjectionImg(calib_params,imageCalibration);
-      cv::Mat test_img_show;
-      cv::resize(test_img,test_img_show,cv::Size(1280,720));
-      cv::imshow("粗校准外参后", test_img_show);
-      cv::imwrite("/home/harry/data/X2-1166/0215/result/rough.jpg", test_img);
+  //精校准
+  std::vector<VPnPData> vpnp_list;
+  std::ofstream pnpfile(pnp_file); 
+  bool opt_flag = true;
+  cv::Mat opt_img = calibra.getProjectionImg(calib_params,imageCalibration);
+  cv::Mat opt_img_show;
+  OptCalib(calibra, calib_params, imageCalibration, vpnp_list, opt_flag, R, T);
 
-      cv::waitKey(1000);
-      int iter = 0;
-      // Maximum match distance threshold: 15 pixels
-      // If initial extrinsic lead to error over 15 pixels, the algorithm will not
-      // work
-      int dis_threshold = 50;
-      bool opt_flag = true;
-      std::ofstream pnpfile(pnp_file);  
-      //不是通过迭代次数决定处理时间，而是通过dis_threshold（边缘点云与图像边缘点云距离最大值）
-      // Iteratively reducve the matching distance threshold
-      for (dis_threshold = 25; dis_threshold > 3; dis_threshold -= 1) {
-        // For each distance, do twice optimization
-        for (int cnt = 0; cnt < 2; cnt++) {
-          std::cout << "Iteration:" << iter++ << " Dis:" << dis_threshold
-                    << std::endl;
-          //生成vpnp_list,用于迭代优化
-          if (use_vpnp) {
-            calibra.buildVPnp(calib_params, dis_threshold, true,
-                              calibra.rgb_egde_cloud_, calibra.lidar_edge_clouds,
-                              vpnp_list);
-          } else {
-            calibra.buildPnp(calib_params, dis_threshold, true,
-                            calibra.rgb_egde_cloud_, calibra.lidar_edge_clouds,
-                            pnp_list);
-          }
 
-          cv::Mat projection_img = calibra.getProjectionImg(calib_params,imageCalibration);
-          cv::Mat projection_img_show;
-          cv::resize(projection_img,projection_img_show,cv::Size(1280,720));
-          cv::imshow("Optimization", projection_img_show);
-          cv::waitKey(100);
-          Eigen::Quaterniond q(R);
-          Eigen::Vector3d ori_t = T;
-          double ext[7];
-          ext[0] = q.x();
-          ext[1] = q.y();
-          ext[2] = q.z();
-          ext[3] = q.w();
-          ext[4] = T[0];
-          ext[5] = T[1];
-          ext[6] = T[2];
-          Eigen::Map<Eigen::Quaterniond> m_q = Eigen::Map<Eigen::Quaterniond>(ext);  //姿态相关四元数
-          Eigen::Map<Eigen::Vector3d> m_t = Eigen::Map<Eigen::Vector3d>(ext + 4);//位置偏移量
+  //精校准结果
+  OptResult(calibra, calib_params, R, T, t1, opt_img, opt_img_show);
 
-          ceres::LocalParameterization *q_parameterization =
-              new ceres::EigenQuaternionParameterization();
-          ceres::Problem problem;
 
-          problem.AddParameterBlock(ext, 4, q_parameterization);
-          problem.AddParameterBlock(ext + 4, 3);
-          if (use_vpnp) {
-            for (auto val : vpnp_list) {
-              ceres::CostFunction *cost_function;
-              cost_function = vpnp_calib::Create(val);
-              problem.AddResidualBlock(cost_function, NULL, ext, ext + 4);
-              //problem.AddResidualBlock(cost_function, NULL, ext);
+  //优化内参
+  vector<Point3f> points_3D;
+  vector<Point2f> points_2D;
+  OptInner(points_3D, points_2D, camera_matrix_, dist_coeffs_, vpnp_list, imageSize);
 
-            }
-          } else {
-            for (auto val : pnp_list) {
-              ceres::CostFunction *cost_function;
-              cost_function = pnp_calib::Create(val);
-              problem.AddResidualBlock(cost_function, NULL, ext, ext + 4);
-              //problem.AddResidualBlock(cost_function, NULL, ext);
-            }
-          }
-        
-          if(!T_opt)
-          {
-            problem.SetParameterBlockConstant(ext+4);
-          }
-          //SetParameterBlockVariable(ext+4)
-          ceres::Solver::Options options;//最后配置并运行求解器
-          options.preconditioner_type = ceres::JACOBI;
-          options.linear_solver_type = ceres::SPARSE_SCHUR;//配置增量方程的解法 SPARSE_SCHUR DENSE_QR
-          options.minimizer_progress_to_stdout = true;//输出优化过程信息
-          options.trust_region_strategy_type = ceres::LEVENBERG_MARQUARDT;//信任域策略 LM算法
-       // options.max_num_iterations= 10;  //迭代次数设置
-          options.num_threads = 6;//解算线程数
-          options.max_num_line_search_direction_restarts=0.5; //线性角度限制
-          
-          ceres::Solver::Summary summary;//优化信息
-          ceres::Solve(options, &problem, &summary);//求解!!!
-          std::cout << summary.BriefReport() << std::endl;
-          
-          Eigen::Matrix3d rot = m_q.toRotationMatrix();
-          Eigen::Vector3d euler_angle = rot.eulerAngles(2, 1, 0);
-          // std::cout << m_t << std::endl;
-          calib_params[0] = euler_angle[0];
-          calib_params[1] = euler_angle[1];
-          calib_params[2] = euler_angle[2];
-          calib_params[3] = m_t(0);
-          calib_params[4] = m_t(1);
-          calib_params[5] = m_t(2);
 
-          // calib_params[3] = T(0);
-          // calib_params[4] = T(1);
-          // calib_params[5] = T(2);
-          R = rot;
-          T[0] = m_t(0);
-          T[1] = m_t(1);
-          T[2] = m_t(2);
+  //计算外参
+   OptOuter(calibra, points_3D, points_2D, camera_matrix_, dist_coeffs_, R, T, imageSize,opt_img, opt_img_show,pnpfile);
 
-          Eigen::Quaterniond opt_q(R);
-          std::cout << "旋转偏差:" << RAD2DEG(opt_q.angularDistance(q))
-                    << " ,平移偏差:" << (T - ori_t).norm() << std::endl;
-          std::cout << "精细调整旋转矩阵后:"<< euler_angle[0] <<' '<<euler_angle[1] <<' '<< euler_angle[2] << std::endl;   //输出旋转矩阵
-          std::cout << "精细调整位置后:"<< T[0] <<' '<< T[1] <<' '<< T[2] << std::endl;      
-          // getchar();
-       if(iter>1)
-       {
-        // if(1)  //前后2次优化姿态角变化小于0.01°且偏移量小于0.005m，停止优化
-        // {
-        //     if (RAD2DEG(opt_q.angularDistance(q)) < 0.01 &&
-        //           (T - ori_t).norm() < 0.01) {
-        //         opt_flag = false;
-        //       }
-        // }
-        // else
-        // {
-        //   if (((RAD2DEG(opt_q.angularDistance(q))) < 0.01)||(RAD2DEG(opt_q.angularDistance(q))>1)) {
-        //         opt_flag = false;
-        //       }
-        // }
-
-        if ( 0 && ((opt_q.angularDistance(q) < DEG2RAD(0.01) &&
-            (T - ori_t).norm() < 0.005)||( opt_q.angularDistance(q) > DEG2RAD(0.5))) )
-            {
-               opt_flag = false;
-            }
-        else
-            {
-              if ((opt_q.angularDistance(q) < DEG2RAD(0.03)) || (opt_q.angularDistance(q) > DEG2RAD(0.08))) {
-                  opt_flag = false;
-              }
-            }
-       }
-          if (!opt_flag) {
-            break;
-          }
-       }
-        if (!opt_flag) {
-          break;
-        }
-      }
-
-      ros::Rate loop(0.5);
-      // roughCalib(calibra, calib_params, DEG2RAD(0.01), 20);
-
-      R = Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
-          Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
-          Eigen::AngleAxisd(calib_params[2], Eigen::Vector3d::UnitX());
-      std::ofstream outfile(result_file);
-      for (int i = 0; i < 3; i++) {
-        outfile << R(i, 0) << "," << R(i, 1) << "," << R(i, 2) << "," << T[i]
-                << std::endl;
-      }
-      outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl;
-      Eigen::Vector3d euler_ori = R.eulerAngles(2, 1, 0);
-      outfile << RAD2DEG(euler_ori[0]) << "," << RAD2DEG(euler_ori[1]) << ","
-              << RAD2DEG(euler_ori[2]) << "," << 0 << "," << 0 << "," << 0
-              << std::endl;    
-      
-      cv::Mat opt_img = calibra.getProjectionImg(calib_params,imageCalibration);
-      cv::Mat opt_img_show;
-      cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
-      cv::imshow("Optimization result", opt_img_show);
-      cv::imwrite("/home/harry/data/X2-1166/0215/result/opt.jpg", opt_img);
-
-      cv::waitKey(1000);
-      Eigen::Matrix3d init_rotation;
-      init_rotation << 0, -1.0, 0, 0, 0, -1.0, 1, 0, 0;
-      Eigen::Matrix3d adjust_rotation;
-      
-      adjust_rotation =  R*init_rotation.inverse() ;
-      for (int i = 0; i < 3; i++) {
-        outfile << adjust_rotation(i, 0) << "," << adjust_rotation(i, 1) << "," <<adjust_rotation(i, 2) << "," << T[i]
-                << std::endl;
-      }
-      outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl;
-
-    Eigen::Vector3d adjust_euler = adjust_rotation.eulerAngles(2, 1, 0); //输出顺序为分别绕 ZYX轴的旋转角
-    outfile << RAD2DEG(adjust_euler[0]) << "," << RAD2DEG(adjust_euler[1]) << ","
-            << RAD2DEG(adjust_euler[2]) << "," << 0 << "," << 0 << "," << 0
-            << std::endl;
-    
-      double angel_X=0.0;
-      double angel_Y=0.0;
-      double angel_Z=0.0;
-      double temp=0.0;
-
-      angel_X= atan2(adjust_rotation(2,1),adjust_rotation(2,2));      //Cnb：激光器和惯导的安置角
-      
-      temp= (adjust_rotation(2,0))/sqrt(1-pow(adjust_rotation(2,0),2));  
-      angel_Y= -atan(temp);
-      angel_Z = atan2(adjust_rotation(1,0),adjust_rotation(0,0));
-      outfile<<"angel_X, angel_Y,angel_Z:" << RAD2DEG(angel_X) << "," << RAD2DEG(angel_Y) << ","
-                << RAD2DEG(angel_Z) << std::endl;
-
-      time_t t3 = clock();
-      std::cout << "总校准时间:" << (double)(t3 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
-      outfile.close();
-
-   /*********************************************************优化内参***********************************************/
-   /****************************************************************************************************************/
-    if(0)
-    {
-      vector<Point3f> points_3D;
-      vector<Point2f> points_2D;
-      vector<vector<Point3f>> object_points_seq;
-      vector<vector<Point2f>> image_points_seq;
-    // vector<Mat> rvecsMat;                                          // 存放所有图像的旋转向量，每一副图像的旋转向量为一个mat
-    // vector<Mat> tvecsMat;  
-      cv::Mat rvecsMat;                                                // 存放所有图像的旋转向量，每一副图像的旋转向量为一个mat
-      cv::Mat tvecsMat;  
-      for (int i = 0; i < vpnp_list.size(); i++)
-      {
-        points_3D.push_back(Point3f(vpnp_list[i].x,vpnp_list[i].y,vpnp_list[i].z));
-        points_2D.push_back(Point2f(vpnp_list[i].u,vpnp_list[i].v));
-      }
-
-      object_points_seq.push_back(points_3D);
-      image_points_seq.push_back(points_2D);
-      double err_first=cv::calibrateCamera(object_points_seq, image_points_seq, imageSize,camera_matrix_, dist_coeffs_, rvecsMat, tvecsMat,CALIB_USE_INTRINSIC_GUESS);
-      Mat rvecsMat_cv;
-      cv::Rodrigues(rvecsMat, rvecsMat_cv);
-      std::cout<<"vector<Mat>:"<<camera_matrix_<< std::endl;
-      std::cout<<"dist_coeffs_:"<<dist_coeffs_<< std::endl;
-      std::cout<<"rvecsMat:"<< rvecsMat_cv << std::endl;
-      std::cout<<"tvecsMat:"<< tvecsMat << std::endl;  
-      std::cout << "重投影误差1：" << err_first << "像素" << endl << endl; 
-
-    //**************************计算外参*********************************//
-      Mat r, t;
-      solvePnP(points_3D, points_2D, camera_matrix_, dist_coeffs_, r, t);
-    // Eigen::Matrix3d R
-      Mat R_cv;
-      cv::Rodrigues(r, R_cv);  //旋转向量转化为旋转矩阵
-    
-      cv::cv2eigen(R_cv, R);
-      cout << "R=" << endl << R << endl;
-      cv::cv2eigen(t, T);
-      cout << "t=" << endl << T << endl;
-      Vector6d calib_params_test;
-
-      //外参优化
-      Eigen::Vector3d euler = R.eulerAngles(2, 1, 0);
-      calib_params_test[0] = euler[0];
-      calib_params_test[1] = euler[1];
-      calib_params_test[2] = euler[2];
-      calib_params_test[3] =T[0];
-      calib_params_test[4] = T[0];
-      calib_params_test[5] = T[0];
-
-      // 估计出的内参补偿
-      cv::initUndistortRectifyMap(camera_matrix_, dist_coeffs_, cv::Mat(),
-      cv::getOptimalNewCameraMatrix(camera_matrix_, dist_coeffs_, imageSize, 1, imageSize, 0),
-        imageSize, CV_16SC2, map1, map2);
-      cv::remap(calibra.image_, imageCalibration_pnp, map1, map2, cv::INTER_LINEAR);
-      assert(imageCalibration_pnp.data);//如果数据为空就终止执行
-      cv::resize(imageCalibration_pnp, imageCalibration_show, cv::Size(1920, 1080));
-      //cv::imshow("imageCalibration_pnp", imageCalibration_show);
-    // cv::waitKey(100);
-    
-    //外参补偿并投影
-      opt_img = calibra.getProjectionImg(calib_params_test,imageCalibration_pnp);
-      cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
-      cv::imshow("Optimization result_pnp", opt_img_show);
-      cv::imwrite("/home/harry/data/X2-1166/0215/result/opt_pnp.jpg", opt_img);
-      // for (int i = 0; i < vpnp_list.size(); i++) {
-      //         pnpfile << vpnp_list[i].x << "," << vpnp_list[i].y << "," << vpnp_list[i].z << "," 
-      //         << vpnp_list[i].u<<","<<vpnp_list[i].v << std::endl;
-      //       }
-      pnpfile <<" camera_matrix_: "<<camera_matrix_<< std::endl;
-      pnpfile <<" dist_coeffs_: "<<dist_coeffs_<< std::endl;
-      pnpfile <<" R: "<<R << std::endl;
-      pnpfile <<" t:"<<T << std::endl;
-
-      pnpfile.close();
-    }
-
-    /************************************************************************************************************/
-   
-    while (ros::ok()) {
+   while (ros::ok()) {
       sensor_msgs::PointCloud2 pub_cloud;
       pcl::PointCloud<pcl::PointXYZRGB>::Ptr rgb_cloud(
           new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -786,6 +804,7 @@ int main(int argc, char **argv) {
       getchar();
       /* code */
     }
-  }
+
   return 0;
+
 }
