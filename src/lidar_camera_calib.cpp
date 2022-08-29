@@ -254,10 +254,11 @@ int Image_PinHole_Distort(cv::Mat camera_matrix_, cv::Size &imageSize, cv::Mat d
 }
 
 
+
 /**********************************************/
 /*Yaml参数读取*********************************/
 /*********************************************/
-int Yaml_Para_Deal(ros::NodeHandle &nh)
+int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf)
 {
   nh.param<string>("common/image_file", image_file, "");
   nh.param<string>("common/pcd_file", pcd_file, "");
@@ -273,6 +274,35 @@ int Yaml_Para_Deal(ros::NodeHandle &nh)
 
   std::cout << "image_file path:" << image_file << std::endl;
   std::cout << "pcd_file path:" << pcd_file << std::endl;
+
+
+  //原outdoor参数
+  nh.param<vector<double>>("ExtrinsicMat/data", outConf.init_extrinsic_, vector<double>());
+
+  nh.param<int>("Canny/gray_threshold", outConf.rgb_canny_threshold_, 10);
+  nh.param<int>("Canny/len_threshold", outConf.rgb_edge_minLen_, 200);
+
+  nh.param<float>("Voxel/size", outConf.voxel_size_, 0.5);  
+  nh.param<float>("Voxel_auto/size", outConf.voxel_auto_size_, 4.0); 
+  nh.param<float>("Voxel/down_sample_size", outConf.down_sample_size_, 0.05);  
+
+  nh.param<float>("Plane/min_points_size", outConf.plane_size_threshold_, 30); 
+  nh.param<float>("Plane/max_size", outConf.plane_max_size_, 8);  
+  nh.param<float>("Plane/normal_theta_min", outConf.theta_min_, 30); 
+  nh.param<float>("Plane/normal_theta_max", outConf.theta_max_, 150); 
+
+  nh.param<float>("Ransac/dis_threshold", outConf.ransac_dis_threshold_, 0.02); 
+
+  nh.param<float>("Edge/min_dis_threshold", outConf.min_line_dis_threshold_, 0.03); 
+  nh.param<float>("Edge/max_dis_threshold", outConf.max_line_dis_threshold_, 0.06);  
+
+  nh.param<int>("Color/intensity_threshold", outConf.color_intensity_threshold_, 5);
+
+  outConf.theta_min_ = cos(DEG2RAD(outConf.theta_min_));
+  outConf.theta_max_ = cos(DEG2RAD(outConf.theta_max_));
+  
+  outConf.direction_theta_min_ = cos(DEG2RAD(30.0));
+  outConf.direction_theta_max_ = cos(DEG2RAD(150.0));
 
   return 0;
 }
@@ -570,7 +600,7 @@ int  OptResult(Calibration &calibra,
   cv::waitKey(1000);
 
   Eigen::Matrix3d init_rotation;
-  init_rotation << 0, -1.0, 0, 0, 0, -1.0, 1, 0, 0;
+  init_rotation << 0, 1.0, 0, 0, 0, 1.0, 1, 0, 0;
   Eigen::Matrix3d adjust_rotation;
   
   adjust_rotation =  R*init_rotation.inverse() ;
@@ -706,10 +736,12 @@ int main(int argc, char **argv) {
   ros::Rate loop_rate(0.1);
 
   //Yaml参数读取
-  Yaml_Para_Deal(nh);
+  Config_OutDoor    outConfig;
+  Yaml_Para_Deal(nh, outConfig);
 
   //构造函数：读取image和pcd
-  Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel);
+  // Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel);
+  Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel, outConfig);
 
   //iamge边缘提取
   Image_Edge_Deal(calibra);

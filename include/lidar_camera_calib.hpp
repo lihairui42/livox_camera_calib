@@ -39,6 +39,35 @@
 #define online
 #define max_layer 4
 
+/*原来的outdoor配置参数*/
+typedef struct Config_OutDoor_s
+{
+  vector<double>    init_extrinsic_;
+
+  int               rgb_canny_threshold_;
+  int               rgb_edge_minLen_;
+
+  float             voxel_size_;
+  float             voxel_auto_size_;
+  float             down_sample_size_;
+
+  float             plane_size_threshold_;
+  float             plane_max_size_;
+  float             theta_min_;
+  float             theta_max_;
+
+  float             ransac_dis_threshold_;
+
+  float             min_line_dis_threshold_;
+  float             max_line_dis_threshold_;
+
+  int               color_intensity_threshold_;
+
+  float             direction_theta_min_;
+  float             direction_theta_max_;
+}Config_OutDoor;
+
+
 class OctoTree
 {
 public:
@@ -292,13 +321,20 @@ public:
                          const std::string &pcd_file,
                          const std::string &calib_config_file,bool use_ada_voxel);
 
+  Calibration(const std::string &image_file,
+                         const std::string &pcd_file,
+                         const std::string &calib_config_file,bool use_ada_voxel, Config_OutDoor &outConfig);
+
   void projectLine(const Plane* plane1, const Plane* plane2, std::vector<Eigen::Vector3d>& line_point);
   
   void loadImgAndPointcloud(const std::string bag_path,
                             pcl::PointCloud<pcl::PointXYZI>::Ptr &origin_cloud,
                             cv::Mat &rgb_img);
   bool loadCameraConfig(const std::string &camera_file);
+  
   bool loadCalibConfig(const std::string &config_file);
+  bool loadCalibConfigOut(const Config_OutDoor &outConfig);
+
   bool loadConfig(const std::string &configFile);
   bool checkFov(const cv::Point2d &p);
   void colorCloud(const Vector6d &extrinsic_params, const int density,
@@ -355,8 +391,7 @@ public:
   void mergePlane(std::vector<Plane*>& origin_list, std::vector<Plane*>& merge_list);
 };
 
-
-/**********************************************/
+/*********************构造函数1*****************/
 /*构造函数**************************************/
 /*读取image************************************/
 /*读取pcd**************************************/
@@ -368,6 +403,62 @@ Calibration::Calibration(const std::string &image_file,
   lidar_edge_clouds = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
   //bool use_ada_voxel = false;
   loadCalibConfig(calib_config_file);
+
+   //读取image文件
+  image_ = cv::imread(image_file, cv::IMREAD_UNCHANGED);
+  
+  //判断是否iamge是否读取成功
+  if (!image_.data) {
+    std::string msg = "Can not load image from " + image_file;
+    ROS_ERROR_STREAM(msg.c_str());
+    exit(-1);
+  } else {
+    std::string msg = "Sucessfully load image!";
+    ROS_INFO_STREAM(msg.c_str());
+  }
+
+  //image的宽度和高度
+  width_ = image_.cols;
+  height_ = image_.rows;
+  cout<< "width_:"<<width_<<endl;
+  cout<< "height_:"<<height_<<endl;  
+
+  
+  //打开点云文件
+  std::fstream file_;
+  file_.open(pcd_file, ios::in);
+  if (!file_) {
+    cout << "Point Cloud File " << pcd_file << " does not exit" << endl;
+    return;
+  }
+
+  //读取点云文件
+  raw_lidar_cloud_ = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
+  ROS_INFO_STREAM("Loading point cloud from pcd file.");
+  int cloudCount=0;
+  while(!file_.eof())
+  {
+    pcl::PointXYZI p;
+    file_>>p.x>>p.y>>p.z>>p.intensity;
+    raw_lidar_cloud_->points.push_back(p);
+    ++cloudCount;
+  }
+  cout<<"Read Point End"<<cloudCount<< endl;;
+};
+
+/*********************构造函数2*****************/
+/*构造函数**************************************/
+/*读取image************************************/
+/*读取pcd**************************************/
+/*********************************************/
+Calibration::Calibration(const std::string &image_file,
+                         const std::string &pcd_file,
+                         const std::string &calib_config_file, bool use_ada_voxel,
+                         Config_OutDoor &outConfig)  {
+ 
+  lidar_edge_clouds = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
+  //bool use_ada_voxel = false;
+  loadCalibConfigOut(outConfig);
 
    //读取image文件
   image_ = cv::imread(image_file, cv::IMREAD_UNCHANGED);
@@ -480,6 +571,39 @@ bool Calibration::loadCalibConfig(const std::string &config_file) {
   color_intensity_threshold_ = fSettings["Color.intensity_threshold"];
   return true;
 };
+
+bool Calibration::loadCalibConfigOut(const Config_OutDoor &outConfig)
+{
+  int i,j;
+  for(i=0; i<3; i++)
+  {
+    for(j=0; j<3; j++)
+    {
+      init_rotation_matrix_(i,j) = outConfig.init_extrinsic_[i*4+j];
+    }
+    init_translation_vector_(i) = outConfig.init_extrinsic_[i*4+3];
+  }
+  
+  rgb_canny_threshold_ = outConfig.rgb_canny_threshold_;
+  rgb_edge_minLen_ = outConfig.rgb_edge_minLen_;
+
+
+  voxel_size_ = outConfig.voxel_size_;
+  voxel_auto_size_ = outConfig.voxel_auto_size_;
+  down_sample_size_ = outConfig.down_sample_size_;
+  plane_size_threshold_ = outConfig.plane_size_threshold_;
+  plane_max_size_ = outConfig.plane_max_size_;
+  ransac_dis_threshold_ = outConfig.ransac_dis_threshold_;
+  min_line_dis_threshold_ = outConfig.min_line_dis_threshold_;
+  max_line_dis_threshold_ = outConfig.max_line_dis_threshold_;
+  theta_min_ = outConfig.theta_min_;
+  theta_max_ = outConfig.theta_max_;
+  direction_theta_min_ = outConfig.direction_theta_min_;
+  direction_theta_max_ = outConfig.direction_theta_max_;
+  color_intensity_threshold_ = outConfig.color_intensity_threshold_;
+
+  return true;
+}
 
 // Color the point cloud by rgb image using given extrinsic
 void Calibration::colorCloud(
