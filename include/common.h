@@ -152,7 +152,7 @@ template <class T> void calc(T matrix[4][5], Eigen::Vector3d &solution) {
 // Similar with PCL voxelgrid filter
 void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
                          double voxel_size) {
-  int intensity = rand() % 255;
+  // int intensity = rand() % 255;
   if (voxel_size < 0.01) {
     return;
   }

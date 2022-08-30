@@ -487,6 +487,7 @@ void OptCalib(Calibration &calibra,
       Eigen::Map<Eigen::Quaterniond> m_q = Eigen::Map<Eigen::Quaterniond>(ext);  //姿态相关四元数
       Eigen::Map<Eigen::Vector3d> m_t = Eigen::Map<Eigen::Vector3d>(ext + 4);     //位置偏移量
 
+
       ceres::LocalParameterization *q_parameterization = new ceres::EigenQuaternionParameterization();
       ceres::Problem problem;
 
@@ -647,7 +648,7 @@ int  OptInner(vector<Point3f> &points_3D, vector<Point2f> &points_2D,
   cv::Mat rvecsMat;                                                // 存放所有图像的旋转向量，每一副图像的旋转向量为一个mat
   cv::Mat tvecsMat;  
 
-  for (int i = 0; i < vpnp_list.size(); i++)
+  for (size_t i = 0; i < vpnp_list.size(); i++)
   {
     points_3D.push_back(Point3f(vpnp_list[i].x,vpnp_list[i].y,vpnp_list[i].z));
     points_2D.push_back(Point2f(vpnp_list[i].u,vpnp_list[i].v));

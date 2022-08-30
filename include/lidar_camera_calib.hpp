@@ -79,8 +79,8 @@ public:
     double voxel_center_[3]; // x, y, z
     Eigen::Vector3d layer_size_;
     float quater_length_;
-    float planer_threshold_;
     int points_size_threshold_;
+    float planer_threshold_;
     int update_size_threshold_;
     int new_points_;
     bool init_octo_;
@@ -124,9 +124,9 @@ public:
         evalsReal.rowwise().sum().minCoeff(&evalsMin);
         evalsReal.rowwise().sum().maxCoeff(&evalsMax);
         int evalsMid = 3 - evalsMin - evalsMax;
-        Eigen::Vector3d evecMin = evecs.real().col(evalsMin);
-        Eigen::Vector3d evecMid = evecs.real().col(evalsMid);
-        Eigen::Vector3d evecMax = evecs.real().col(evalsMax);
+        // Eigen::Vector3d evecMin = evecs.real().col(evalsMin);
+        // Eigen::Vector3d evecMid = evecs.real().col(evalsMid);
+        // Eigen::Vector3d evecMax = evecs.real().col(evalsMax);
 
         if (evalsReal(evalsMin) < planer_threshold_ && evalsReal(evalsMid) > 0.01)
         {
@@ -155,7 +155,7 @@ public:
 
     void init_octo_tree()
     {
-        if (temp_points_.size() > points_size_threshold_)
+        if ( temp_points_.size() > (size_t)points_size_threshold_ )
         {
             init_plane(temp_points_, plane_ptr_);
             if (plane_ptr_->is_plane == true)
@@ -203,7 +203,7 @@ public:
         }
         for (uint i = 0; i < 8; i++)
             if (leaves_[i] != nullptr)
-                if (leaves_[i]->temp_points_.size() > leaves_[i]->points_size_threshold_)
+                if (leaves_[i]->temp_points_.size() > (size_t)(leaves_[i]->points_size_threshold_))
                 {
                     init_plane(leaves_[i]->temp_points_, leaves_[i]->plane_ptr_);
                     if (leaves_[i]->plane_ptr_->is_plane)
@@ -695,7 +695,7 @@ void Calibration::edgeDetector(
   edge_cloud =
       pcl::PointCloud<pcl::PointXYZ>::Ptr(new pcl::PointCloud<pcl::PointXYZ>);
   for (size_t i = 0; i < contours.size(); i++) {
-    if (contours[i].size() > edge_threshold) {
+    if (contours[i].size() > (size_t)edge_threshold) {
       cv::Mat debug_img = cv::Mat::zeros(height_, width_, CV_8UC1);
       for (size_t j = 0; j < contours[i].size(); j++) {
         pcl::PointXYZ p;
@@ -1073,9 +1073,9 @@ void Calibration::debugVoxel(std::unordered_map<VOXEL_LOC, OctoTree*>& voxel_map
                 voxel_origin[1] = iter->second->voxel_center_[1] - 2 * iter->second->quater_length_;
                 voxel_origin[2] = iter->second->voxel_center_[2] - 2 * iter->second->quater_length_;
 
-                for (int p1_index = 0; p1_index < merge_plane_list.size() - 1; p1_index++)
+                for (size_t p1_index = 0; p1_index < merge_plane_list.size() - 1; p1_index++)
                 {
-                    for (int p2_index = p1_index + 1; p2_index < merge_plane_list.size(); p2_index++)
+                    for (size_t p2_index = p1_index + 1; p2_index < merge_plane_list.size(); p2_index++)
                     {
                         std::vector<Eigen::Vector3d> line_point;
                         projectLine(merge_plane_list[p1_index], merge_plane_list[p2_index], line_point);
@@ -1212,10 +1212,10 @@ void Calibration:: mergePlane(std::vector<Plane*>& origin_list, std::vector<Plan
             Eigen::Matrix3f::Index evalsMin, evalsMax;
             evalsReal.rowwise().sum().minCoeff(&evalsMin);
             evalsReal.rowwise().sum().maxCoeff(&evalsMax);
-            int evalsMid = 3 - evalsMin - evalsMax;
-            Eigen::Vector3d evecMin = evecs.real().col(evalsMin);
-            Eigen::Vector3d evecMid = evecs.real().col(evalsMid);
-            Eigen::Vector3d evecMax = evecs.real().col(evalsMax);
+            // int evalsMid = 3 - evalsMin - evalsMax;
+            // Eigen::Vector3d evecMin = evecs.real().col(evalsMin);
+            // Eigen::Vector3d evecMid = evecs.real().col(evalsMid);
+            // Eigen::Vector3d evecMax = evecs.real().col(evalsMax);
             merge_plane->id = origin_list[i]->id;
             merge_plane->normal << evecs.real()(0, evalsMin),
                 evecs.real()(1, evalsMin), evecs.real()(2, evalsMin);
@@ -1295,20 +1295,20 @@ void  Calibration:: projectLine(const Plane* plane1, const Plane* plane2, std::v
             x_axis.normalize();
             Eigen::Vector3d y_axis = projection_normal.cross(x_axis);
             y_axis.normalize();
-            double ax = x_axis[0];
-            double bx = x_axis[1];
-            double cx = x_axis[2];
-            double dx = -(ax * projection_center[0] + bx * projection_center[1] + cx * projection_center[2]);
-            double ay = y_axis[0];
-            double by = y_axis[1];
-            double cy = y_axis[2];
-            double dy = -(ay * projection_center[0] + by * projection_center[1] + cy * projection_center[2]);
+            // double ax = x_axis[0];
+            // double bx = x_axis[1];
+            // double cx = x_axis[2];
+            // double dx = -(ax * projection_center[0] + bx * projection_center[1] + cx * projection_center[2]);
+            // double ay = y_axis[0];
+            // double by = y_axis[1];
+            // double cy = y_axis[2];
+            // double dy = -(ay * projection_center[0] + by * projection_center[1] + cy * projection_center[2]);
             for (size_t i = 0; i < use_points.size(); i++)
             {
                 double x = use_points[i](0);
                 double y = use_points[i](1);
                 double z = use_points[i](2);
-                double dis = fabs(x * A + y * B + z * C + D);
+                // double dis = fabs(x * A + y * B + z * C + D);
                 Eigen::Vector3d cur_project;
 
                 cur_project[0] = (-A * (B * y + C * z + D) + x * (B * B + C * C)) /
@@ -1440,7 +1440,7 @@ void Calibration::LiDAREdgeExtraction(
         extract.setInputCloud(cloud_filter);
         extract.filter(planner_cloud);
 
-        if (planner_cloud.size() > plane_size_threshold) {
+        if (planner_cloud.size() > (size_t)plane_size_threshold) {
           pcl::PointCloud<pcl::PointXYZRGB> color_cloud;
           std::vector<unsigned int> colors;
           colors.push_back(static_cast<unsigned int>(rand() % 256));
@@ -1515,7 +1515,7 @@ void Calibration::calcLine(
     const std::vector<SinglePlane> &plane_list, const double voxel_size,
     const Eigen::Vector3d origin,
     std::vector<pcl::PointCloud<pcl::PointXYZI>> &line_cloud_list) {
-  if (plane_list.size() >= 2 && plane_list.size() <= plane_max_size_) {
+  if (plane_list.size() >= 2 && plane_list.size() <= (size_t)plane_max_size_) {
     pcl::PointCloud<pcl::PointXYZI> temp_line_cloud;
     for (size_t plane_index1 = 0; plane_index1 < plane_list.size() - 1;
          plane_index1++) {
@@ -1814,9 +1814,9 @@ void Calibration::buildVPnp(
   std::vector<float> pointNKNSquaredDistance(K);
   std::vector<int> pointIdxNKNSearchLidar(K);
   std::vector<float> pointNKNSquaredDistanceLidar(K);
-  int match_count = 0;
-  double mean_distance;
-  int line_count = 0;
+  // int match_count = 0;
+  // double mean_distance;
+  // int line_count = 0;
   std::vector<cv::Point2d> lidar_2d_list;
   std::vector<cv::Point2d> img_2d_list;
   std::vector<Eigen::Vector2d> camera_direction_list;
@@ -1880,7 +1880,7 @@ void Calibration::buildVPnp(
       pnp.z = 0;
       pnp.u = img_2d_list[i].x;
       pnp.v = img_2d_list[i].y;
-      for (size_t j = 0; j < pixel_points_size; j++) {
+      for (size_t j = 0; j < (size_t)pixel_points_size; j++) {
         pnp.x += img_pts_container[y][x][j].x;
         pnp.y += img_pts_container[y][x][j].y;
         pnp.z += img_pts_container[y][x][j].z;
@@ -1978,9 +1978,9 @@ void Calibration::buildPnp(
   // 创建两个向量，分别存放近邻的索引值、近邻的中心距
   std::vector<int> pointIdxNKNSearch(K);
   std::vector<float> pointNKNSquaredDistance(K);
-  int match_count = 0;
-  double mean_distance;
-  int line_count = 0;
+  // int match_count = 0;
+  // double mean_distance;
+  // int line_count = 0;
   std::vector<cv::Point2d> lidar_2d_list;
   std::vector<cv::Point2d> img_2d_list;
   for (size_t i = 0; i < search_cloud->points.size(); i++) {
@@ -2017,7 +2017,7 @@ void Calibration::buildPnp(
       pnp.z = 0;
       pnp.u = img_2d_list[i].x;
       pnp.v = img_2d_list[i].y;
-      for (size_t j = 0; j < pixel_points_size; j++) {
+      for (int j = 0; j < pixel_points_size; j++) {
         pnp.x += img_pts_container[y][x][j].x;
         pnp.y += img_pts_container[y][x][j].y;
         pnp.z += img_pts_container[y][x][j].z;
@@ -2045,7 +2045,7 @@ void Calibration::loadImgAndPointcloud(
   rosbag::Bag bag;
   try {
     bag.open(path, rosbag::bagmode::Read);
-  } catch (rosbag::BagException e) {
+  } catch (rosbag::BagException &e) {
     ROS_ERROR_STREAM("LOADING BAG FAILED: " << e.what());
     return;
   }
@@ -2247,9 +2247,9 @@ void Calibration::calcCovarance(const Vector6d &extrinsic_params,
   Eigen::Vector3d transation(extrinsic_params[3], extrinsic_params[4],
                              extrinsic_params[5]);
   float fx = fx_;
-  float cx = cx_;
+  // float cx = cx_;
   float fy = fy_;
-  float cy = cy_;
+  // float cy = cy_;
   Eigen::Vector3f p_l(vpnp_point.x, vpnp_point.y, vpnp_point.z);
   Eigen::Vector3f p_c = rotation.cast<float>() * p_l + transation.cast<float>();
 
@@ -2280,9 +2280,9 @@ void Calibration::calcCovarance(const Vector6d &extrinsic_params,
   Eigen::Matrix3f lidar_position_var =
       direction * range_var * direction.transpose() +
       A * direction_var * A.transpose();
-  Eigen::Matrix3f lidar_position_var_camera =
-      rotation.cast<float>() * lidar_position_var *
-      rotation.transpose().cast<float>();
+  // Eigen::Matrix3f lidar_position_var_camera =
+  //     rotation.cast<float>() * lidar_position_var *
+  //     rotation.transpose().cast<float>();
   Eigen::Matrix2f lidar_pixel_var_2d;
   Eigen::Matrix<float, 2, 3> B;
   B << fx / p_c(2), 0, fx * p_c(0) / pow(p_c(2), 2), 0, fy / p_c(2),

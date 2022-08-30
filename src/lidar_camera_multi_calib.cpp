@@ -211,7 +211,7 @@ int main(int argc, char **argv) {
   nh.param<bool>("calib/use_ada_voxel", use_ada_voxel, false);
 
   std::vector<Calibration> calibs;
-  for (size_t i = 0; i < data_num; i++) {
+  for (int i = 0; i < data_num; i++) {
     string image_file, pcd_file = "";
     image_file = image_path + "/" + std::to_string(i) + ".jpg";
     pcd_file = pcd_path + "/" + std::to_string(i) + ".txt";
@@ -279,7 +279,7 @@ int main(int argc, char **argv) {
             << calibs[0].init_rotation_matrix_ << std::endl;
   std::cout << "Initial translation:"
             << calibs[0].init_translation_vector_.transpose() << std::endl;
-  bool use_vpnp = true;
+  // bool use_vpnp = true;
   Eigen::Vector3d euler = R.eulerAngles(2, 1, 0);
   calib_params[0] = euler[0];
   calib_params[1] = euler[1];
@@ -315,7 +315,7 @@ int main(int argc, char **argv) {
       std::cout << "Iteration:" << iter++ << " Dis:" << dis_threshold
                 << std::endl;
       std::vector<std::vector<VPnPData>> vpnp_list_vect;
-      for (size_t i = 0; i < data_num; i++) {
+      for (int i = 0; i < data_num; i++) {
         std::vector<VPnPData> vpnp_list;
         calibs[i].buildVPnp(calib_params, dis_threshold, true,
                             calibs[i].rgb_egde_cloud_,
@@ -346,7 +346,7 @@ int main(int argc, char **argv) {
 
       problem.AddParameterBlock(ext, 4, q_parameterization);
       problem.AddParameterBlock(ext + 4, 3);
-      for (size_t i = 0; i < data_num; i++) {
+      for (int i = 0; i < data_num; i++) {
         for (auto val : vpnp_list_vect[i]) {
           ceres::CostFunction *cost_function;
           cost_function = vpnp_calib::Create(val);
