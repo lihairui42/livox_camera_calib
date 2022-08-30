@@ -743,12 +743,6 @@ int main(int argc, char **argv) {
   // Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel);
   Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel, outConfig);
 
-  //iamge边缘提取
-  Image_Edge_Deal(calibra);
-
-  //点云边缘提取
-  Scan_Edge_Deal(calibra);
-
   //相机内参
   cv::Mat camera_matrix_=cv::Mat::eye(3, 3, CV_64F);
   cv::Mat dist_coeffs_=cv::Mat::zeros(5, 1, CV_64F);
@@ -758,6 +752,15 @@ int main(int argc, char **argv) {
   cv::Size imageSize;
   Image_PinHole_Distort(camera_matrix_, imageSize, dist_coeffs_, calibra.image_, imageCalibration);
 	assert(imageCalibration.data);
+  calibra.image_ = imageCalibration.clone();
+
+  //iamge边缘提取
+  Image_Edge_Deal(calibra);
+
+  //点云边缘提取
+  Scan_Edge_Deal(calibra);
+
+  imageCalibration = calibra.image_.clone();
 
   //初始相对姿态的旋转矩阵
   Eigen::Vector3d init_euler_angle = calibra.init_rotation_matrix_.eulerAngles(2, 1, 0);
@@ -783,7 +786,7 @@ int main(int argc, char **argv) {
     //后来改成20（0.1*20）次对最终结果没影响。
     //每个姿态角修正循环50次，为了调试方便，现改成5    
     //VPnn 算法中dis_threshold设置为25,粗校准偏移量不修正，只修正姿态
-    roughCalib(calibra, calib_params, DEG2RAD(0.5),10); 
+    roughCalib(calibra, calib_params, DEG2RAD(1.0),5); 
   }
   time_t t2 = clock();
   std::cout << "粗校准时间:" << (double)(t2 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
