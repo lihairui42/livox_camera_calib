@@ -656,19 +656,18 @@ int  OptResult(Calibration &calibra,
     outfile << adjust_rotation(i, 0) << "," << adjust_rotation(i, 1) << "," <<adjust_rotation(i, 2) << "," << T[i]
             << std::endl;
   }
-  outfile << "Camera-Lisar的小角度欧拉角(yaw-pitch-roll):" <<  std::endl;
   outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl << std::endl;
 
+  outfile << "Camera-Lisar的小角度欧拉角(yaw-pitch-roll):" <<  std::endl;
   Eigen::Vector3d adjust_euler = adjust_rotation.eulerAngles(2, 1, 0); //输出顺序为分别绕 ZYX轴的旋转角
   outfile << RAD2DEG(adjust_euler[0]) << "," << RAD2DEG(adjust_euler[1]) << ","
           << RAD2DEG(adjust_euler[2]) << "," << 0 << "," << 0 << "," << 0
           << std::endl << std::endl;
 
-  
   outfile << "Camera-IMU的小角度:" <<  std::endl;
-  outfile << "delta Roll:" <<  vcs(2) << std::endl;
-  outfile << "delta pitch:" <<  vcs(1) << std::endl;
-  outfile << "delta yaw:" <<  vcs(0) << std::endl;
+  outfile << "delta Roll : " <<  vcs(2) << std::endl;
+  outfile << "delta pitch: " <<  vcs(1) << std::endl;
+  outfile << "delta yaw  : " <<  vcs(0) << std::endl;
   // double angel_X=0.0;
   // double angel_Y=0.0;
   // double angel_Z=0.0;
