@@ -68,6 +68,40 @@ typedef struct Config_OutDoor_s
 }Config_OutDoor;
 
 
+/*Lidar相对IMU的外参*/
+typedef struct LidarIMU_ExtPara_s
+{
+  double            roll;                //大角度
+  double            pitch;
+  double            yaw;
+
+  double            deltaRoll;           //小角度
+  double            deltaPitch;
+  double            deltaYaw;
+
+  double            deltaX;              //相对位移
+  double            deltaY;
+  double            deltaZ;
+}LidarIMU_ExtPara;
+
+
+/*Camera相对IMU的外参*/
+typedef struct CameraIMU_ExtPara_s
+{
+  double            roll;                //大角度
+  double            pitch;
+  double            yaw;
+
+  double            deltaRoll;           //小角度
+  double            deltaPitch;
+  double            deltaYaw;
+
+  double            deltaX;              //相对位移
+  double            deltaY;
+  double            deltaZ;
+}CameraIMU_ExtPara;
+
+
 class OctoTree
 {
 public:
@@ -1711,6 +1745,8 @@ void Calibration::calcLine(
   }
 }
 
+extern string residual_file;
+
 void Calibration::buildVPnp(
     const Vector6d &extrinsic_params, const int dis_threshold,
     const bool show_residual,
@@ -1790,7 +1826,7 @@ void Calibration::buildVPnp(
     cv::resize(residual_img,residual_img_show,cv::Size(1920,1080));
     cv::imshow("residual", residual_img_show);
     cv::waitKey(100);
-    cv::imwrite("/home/harry/data/X2-1166/0215/result/residual_img.jpg", residual_img_show);
+    cv::imwrite(residual_file, residual_img_show);
   }
   pcl::search::KdTree<pcl::PointXYZ>::Ptr kdtree(
       new pcl::search::KdTree<pcl::PointXYZ>());

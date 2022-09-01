@@ -1,10 +1,16 @@
 # Data path. adjust them!
 common:
-   image_file:  "/home/harry/data/X2-1166/0215/image/8r.jpg"
-   pcd_file:    "/home/harry/data/X2-1166/0215/pcd/8.txt"
+   image_file:      "/home/harry/data/X2-1166/0215/image/8r.jpg"
+   pcd_file:        "/home/harry/data/X2-1166/0215/pcd/8.txt"
 
-   result_file: "/home/harry/data/X2-1166/0215/result/extrinsic.txt"
-   pnp_file:    "/home/harry/data/X2-1166/0215/result/pnp.txt"
+   result_file:     "/home/harry/data/X2-1166/0215/result/extrinsic.txt"
+   pnp_file:        "/home/harry/data/X2-1166/0215/result/pnp.txt"
+
+   init_file:       "/home/harry/data/X2-1166/0215/result/init.jpg"
+   rough_file:      "/home/harry/data/X2-1166/0215/result/rough.jpg"
+   opt_file:        "/home/harry/data/X2-1166/0215/result/opt.jpg"
+   opt_pnp_file:    "/home/harry/data/X2-1166/0215/result/opt_pnp.jpg"   
+   residual_file:    "/home/harry/data/X2-1166/0215/result/residual_img.jpg"  
 
 # Camera Parameters. Adjust them!
 camera:
@@ -23,6 +29,8 @@ calib:
     calib_en : true
     T_opt : true
 
+###############################################################################################################
+#原config_outdoor.yaml参数
 # 外参
 ExtrinsicMat:
   data: [ -0.00352368,0.999864,0.0160848,0.0149748,
@@ -30,22 +38,27 @@ ExtrinsicMat:
           0.999981,0.00360369,-0.0049478,-0.000869748,
           0,0,0,1     ]
 
+#   data: [ 0.0,   1.0,   0.0,   0,
+#           0.0,   0.0,    1.0,  0,
+#           1.0,   0.0,    0.0,   0,
+#           0.0,   0.0,    0.0,    1.0 ]
+
 # Params for Canny Edge Extraction
 Canny:
     gray_threshold: 10
-    len_threshold: 200
+    len_threshold: 150
 
 # Params for Voxel Cutting & Plane Fitting & Edge Extraction
 Voxel:
     size: 0.5
-    down_sample_size: 0.05
+    down_sample_size: 0.02
 
 Voxel_auto:
-    size: 4
+    size: 8
 
 Plane:
-    min_points_size: 30
-    normal_theta_min: 30
+    min_points_size: 10
+    normal_theta_min: 15
     normal_theta_max: 150
     max_size: 8
 
@@ -54,7 +67,7 @@ Ransac:
     iter_num: 100
 
 Edge:
-    min_dis_threshold: 0.03
+    min_dis_threshold: 0.02
     max_dis_threshold: 0.06
 
 # Params for color point clouds
@@ -64,3 +77,26 @@ Color:
     
 
 
+##############################################################################
+#增加Lidar-IMU外参、Camera-IMU外参
+LidarIMU:
+    roll:            0
+    pitch:           90
+    yaw:             0
+    deltaRoll:      -0.05
+    deltaPitch:      0.29
+    deltaYaw:       -0.700
+    deltaX:          0.015
+    deltaY:          0.001
+    deltaZ:          0.100
+
+CameraIMU:
+    roll:            0
+    pitch:           0
+    yaw:            -90
+    deltaRoll:      -0.205
+    deltaPitch:      0.458
+    deltaYaw:        0.078
+    deltaX:          0.122
+    deltaY:          0.013
+    deltaZ:          0.114

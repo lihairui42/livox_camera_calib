@@ -18,6 +18,13 @@ string image_file;
 string pcd_file;
 string result_file;
 string pnp_file;
+
+string init_file;
+string rough_file;
+string opt_file;
+string opt_pnp_file;
+string residual_file;
+
 // Camera config
 vector<double> camera_matrix;
 vector<double> dist_coeffs;
@@ -258,7 +265,7 @@ int Image_PinHole_Distort(cv::Mat camera_matrix_, cv::Size &imageSize, cv::Mat d
 /**********************************************/
 /*Yaml参数读取*********************************/
 /*********************************************/
-int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf)
+int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf, LidarIMU_ExtPara &paraL, CameraIMU_ExtPara &paraC)
 {
   nh.param<string>("common/image_file", image_file, "");
   nh.param<string>("common/pcd_file", pcd_file, "");
@@ -275,6 +282,11 @@ int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf)
   std::cout << "image_file path:" << image_file << std::endl;
   std::cout << "pcd_file path:" << pcd_file << std::endl;
 
+  nh.param<string>("common/init_file", init_file, "");
+  nh.param<string>("common/rough_file", rough_file, "");
+  nh.param<string>("common/opt_file", opt_file, "");
+  nh.param<string>("common/opt_pnp_file", opt_pnp_file, "");
+  nh.param<string>("common/residual_file", residual_file, "");
 
   //原outdoor参数
   nh.param<vector<double>>("ExtrinsicMat/data", outConf.init_extrinsic_, vector<double>());
@@ -303,6 +315,42 @@ int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf)
   
   outConf.direction_theta_min_ = cos(DEG2RAD(30.0));
   outConf.direction_theta_max_ = cos(DEG2RAD(150.0));
+
+  //Lidar IMU外参
+  nh.param<double>("LidarIMU/roll", paraL.roll, 0); 
+  nh.param<double>("LidarIMU/pitch", paraL.pitch, 0); 
+  nh.param<double>("LidarIMU/yaw", paraL.yaw, -90);
+  nh.param<double>("LidarIMU/deltaRoll", paraL.deltaRoll, 0); 
+  nh.param<double>("LidarIMU/deltaPitch", paraL.deltaPitch, 0); 
+  nh.param<double>("LidarIMU/deltaYaw", paraL.deltaYaw, 0); 
+  nh.param<double>("LidarIMU/deltaX", paraL.deltaX, 0); 
+  nh.param<double>("LidarIMU/deltaY", paraL.deltaY, 0); 
+  nh.param<double>("LidarIMU/deltaZ", paraL.deltaZ, 0); 
+
+  double D2R = M_PI / 180;
+  paraL.roll = paraL.roll * D2R;
+  paraL.pitch = paraL.pitch * D2R;
+  paraL.yaw = paraL.yaw * D2R;
+  paraL.deltaRoll = paraL.deltaRoll * D2R;
+  paraL.deltaPitch = paraL.deltaPitch * D2R;
+  paraL.deltaYaw = paraL.deltaYaw * D2R;
+
+  //Camara IMU外参
+  nh.param<double>("CameraIMU/roll", paraC.roll, 0); 
+  nh.param<double>("CameraIMU/pitch", paraC.pitch, 0); 
+  nh.param<double>("CameraIMU/yaw", paraC.yaw, -90);
+  nh.param<double>("CameraIMU/deltaRoll", paraC.deltaRoll, 0); 
+  nh.param<double>("CameraIMU/deltaPitch", paraC.deltaPitch, 0); 
+  nh.param<double>("CameraIMU/deltaYaw", paraC.deltaYaw, 0); 
+  nh.param<double>("CameraIMU/deltaX", paraC.deltaX, 0); 
+  nh.param<double>("CameraIMU/deltaY", paraC.deltaY, 0); 
+  nh.param<double>("CameraIMU/deltaZ", paraC.deltaZ, 0); 
+  paraC.roll = paraC.roll * D2R;
+  paraC.pitch = paraC.pitch * D2R;
+  paraC.yaw = paraC.yaw * D2R;
+  paraC.deltaRoll = paraC.deltaRoll * D2R;
+  paraC.deltaPitch = paraC.deltaPitch * D2R;
+  paraC.deltaYaw = paraC.deltaYaw * D2R;
 
   return 0;
 }
@@ -428,16 +476,8 @@ int Scan_Camera_Projection_First(Calibration &calibra, cv::Mat &imageCalibration
   init_img_show=cv::Mat::zeros(init_img.size(),init_img.type());
   cv::resize(init_img,init_img_show,cv::Size(1280,720));
   cv::imshow("Initial extrinsic", init_img_show);
-  if(!calib_en)
-  {
-   cv::imwrite("/home/harry/data/X2-1166/0215/result/projection.jpg", init_img_show);
-   cv::waitKey(1000);
-  }
-  else
-  {
-    cv::imwrite("/home/harry/data/X2-1166/0215/result/init.jpg", init_img_show);
-    cv::waitKey(1000);
-  }
+  cv::imwrite(init_file, init_img_show);
+  cv::waitKey(1000);
 
   return 0;
 }
@@ -576,27 +616,33 @@ int  OptResult(Calibration &calibra,
                 Vector6d &calib_params, 
                 Eigen::Matrix3d &R, Eigen::Vector3d &T, 
                 time_t &t1, 
-               cv::Mat &opt_img, cv::Mat &opt_img_show)    
+               cv::Mat &opt_img, cv::Mat &opt_img_show,
+               Eigen::Vector3d &vcs)    
 {
   R = Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
           Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
           Eigen::AngleAxisd(calib_params[2], Eigen::Vector3d::UnitX());
+
+
   std::ofstream outfile(result_file);
+
+  outfile << "Camera-Lisar的相对位姿:" <<  std::endl;
   for (int i = 0; i < 3; i++) {
     outfile << R(i, 0) << "," << R(i, 1) << "," << R(i, 2) << "," << T[i]
             << std::endl;
   }
+  outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl << std::endl;
 
-  outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl;
+  outfile << "Camera-Lisar欧拉角(yaw-pitch-roll):" <<  std::endl;
   Eigen::Vector3d euler_ori = R.eulerAngles(2, 1, 0);
   outfile << RAD2DEG(euler_ori[0]) << "," << RAD2DEG(euler_ori[1]) << ","
           << RAD2DEG(euler_ori[2]) << "," << 0 << "," << 0 << "," << 0
-          << std::endl;    
+          << std::endl << std::endl;    
   
   opt_img = calibra.getProjectionImg(calib_params,imageCalibration);
   cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
   cv::imshow("Optimization result", opt_img_show);
-  cv::imwrite("/home/harry/data/X2-1166/0215/result/opt.jpg", opt_img);
+  cv::imwrite(opt_file, opt_img);
 
   cv::waitKey(1000);
 
@@ -604,30 +650,37 @@ int  OptResult(Calibration &calibra,
   init_rotation << 0, 1.0, 0, 0, 0, 1.0, 1, 0, 0;
   Eigen::Matrix3d adjust_rotation;
   
-  adjust_rotation =  R*init_rotation.inverse() ;
+  outfile << "Camera-Lisar的小角度旋转矩阵:" <<  std::endl;
+  adjust_rotation =  init_rotation.transpose() * R;
   for (int i = 0; i < 3; i++) {
     outfile << adjust_rotation(i, 0) << "," << adjust_rotation(i, 1) << "," <<adjust_rotation(i, 2) << "," << T[i]
             << std::endl;
   }
-  outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl;
+  outfile << "Camera-Lisar的小角度欧拉角(yaw-pitch-roll):" <<  std::endl;
+  outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl << std::endl;
 
   Eigen::Vector3d adjust_euler = adjust_rotation.eulerAngles(2, 1, 0); //输出顺序为分别绕 ZYX轴的旋转角
   outfile << RAD2DEG(adjust_euler[0]) << "," << RAD2DEG(adjust_euler[1]) << ","
           << RAD2DEG(adjust_euler[2]) << "," << 0 << "," << 0 << "," << 0
-          << std::endl;
+          << std::endl << std::endl;
 
-  double angel_X=0.0;
-  double angel_Y=0.0;
-  double angel_Z=0.0;
-  double temp=0.0;
-
-  angel_X= atan2(adjust_rotation(2,1),adjust_rotation(2,2));      //Cnb：激光器和惯导的安置角
   
-  temp= (adjust_rotation(2,0))/sqrt(1-pow(adjust_rotation(2,0),2));  
-  angel_Y= -atan(temp);
-  angel_Z = atan2(adjust_rotation(1,0),adjust_rotation(0,0));
-  outfile<<"angel_X, angel_Y,angel_Z:" << RAD2DEG(angel_X) << "," << RAD2DEG(angel_Y) << ","
-            << RAD2DEG(angel_Z) << std::endl;
+  outfile << "Camera-IMU的小角度:" <<  std::endl;
+  outfile << "delta Roll:" <<  vcs(2) << std::endl;
+  outfile << "delta pitch:" <<  vcs(1) << std::endl;
+  outfile << "delta yaw:" <<  vcs(0) << std::endl;
+  // double angel_X=0.0;
+  // double angel_Y=0.0;
+  // double angel_Z=0.0;
+  // double temp=0.0;
+
+  // angel_X= atan2(adjust_rotation(2,1),adjust_rotation(2,2));      //Cnb：激光器和惯导的安置角
+  
+  // temp= (adjust_rotation(2,0))/sqrt(1-pow(adjust_rotation(2,0),2));  
+  // angel_Y= -atan(temp);
+  // angel_Z = atan2(adjust_rotation(1,0),adjust_rotation(0,0));
+  // outfile<<"angel_X, angel_Y,angel_Z:" << RAD2DEG(angel_X) << "," << RAD2DEG(angel_Y) << ","
+  //           << RAD2DEG(angel_Z) << std::endl;
 
   time_t t3 = clock();
   std::cout << "总校准时间:" << (double)(t3 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
@@ -716,7 +769,7 @@ void OptOuter(Calibration &calibra, vector<Point3f> &points_3D, vector<Point2f> 
   opt_img = calibra.getProjectionImg(calib_params_test,imageCalibration_pnp);
   cv::resize(opt_img,opt_img_show,cv::Size(1280,720));
   cv::imshow("Optimization result_pnp", opt_img_show);
-  cv::imwrite("/home/harry/data/X2-1166/0215/result/opt_pnp.jpg", opt_img);
+  cv::imwrite(opt_pnp_file, opt_img);
 
   pnpfile <<" camera_matrix_: "<<camera_matrix_<< std::endl;
   pnpfile <<" dist_coeffs_: "<<dist_coeffs_<< std::endl;
@@ -725,6 +778,39 @@ void OptOuter(Calibration &calibra, vector<Point3f> &points_3D, vector<Point2f> 
 
   pnpfile.close();
 
+}
+
+/**********************************************/
+/*计算外参**************************************/
+/**********************************************/
+int CameraIMU_ExtPara_Cal(LidarIMU_ExtPara &paraL, CameraIMU_ExtPara &paraC, Vector6d &calib_params, Eigen::Matrix3d &R, Eigen::Vector3d &vcs)
+{
+  //Lidar和IMU之间的旋转矩阵
+  Eigen::Matrix3d   Cbs, Cbc, C1, C2;
+  Cbs = Eigen::AngleAxisd(paraL.yaw, Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(paraL.pitch, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(paraL.roll, Eigen::Vector3d::UnitX());
+
+  C1 =  Eigen::AngleAxisd(paraL.deltaYaw, Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(paraL.deltaPitch, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(paraL.deltaRoll, Eigen::Vector3d::UnitX());
+
+  //Camer和Lidar之间
+  R =   Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(calib_params[2], Eigen::Vector3d::UnitX());
+
+  //Camera和IMU
+  Cbc = Eigen::AngleAxisd(paraC.yaw, Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(paraC.pitch, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(paraC.roll, Eigen::Vector3d::UnitX());
+
+  //计算Camera和IMU之间小角度
+  C2 = C1 * Cbs.transpose() * R.transpose() * Cbc;
+  vcs = C2.eulerAngles(2, 1, 0);
+  vcs = vcs * 180 / M_PI;
+
+  return 0;
 }
 
 
@@ -737,8 +823,11 @@ int main(int argc, char **argv) {
   ros::Rate loop_rate(0.1);
 
   //Yaml参数读取
-  Config_OutDoor    outConfig;
-  Yaml_Para_Deal(nh, outConfig);
+  Config_OutDoor      outConfig;
+  LidarIMU_ExtPara    paraExtLidarIMU;
+  CameraIMU_ExtPara   paraExtCameraIMU;
+
+  Yaml_Para_Deal(nh, outConfig, paraExtLidarIMU, paraExtCameraIMU);
 
   //构造函数：读取image和pcd
   // Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel);
@@ -792,13 +881,12 @@ int main(int argc, char **argv) {
   time_t t2 = clock();
   std::cout << "粗校准时间:" << (double)(t2 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
 
-
   //粗校准后的效果
   cv::Mat test_img = calibra.getProjectionImg(calib_params,imageCalibration);
   cv::Mat test_img_show;
   cv::resize(test_img,test_img_show,cv::Size(1280,720));
   cv::imshow("粗校准外参后", test_img_show);
-  cv::imwrite("/home/harry/data/X2-1166/0215/result/rough.jpg", test_img);
+  cv::imwrite(rough_file, test_img);
   cv::waitKey(1000);
 
   //精校准
@@ -809,9 +897,12 @@ int main(int argc, char **argv) {
   cv::Mat opt_img_show;
   OptCalib(calibra, calib_params, imageCalibration, vpnp_list, opt_flag, R, T);
 
+  //结果转到IMU系
+  Eigen::Vector3d vcs;
+  CameraIMU_ExtPara_Cal(paraExtLidarIMU, paraExtCameraIMU, calib_params, R, vcs);
 
   //精校准结果
-  OptResult(calibra, calib_params, R, T, t1, opt_img, opt_img_show);
+  OptResult(calibra, calib_params, R, T, t1, opt_img, opt_img_show, vcs);
 
 
   //优化内参

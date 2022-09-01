@@ -1,0 +1,66 @@
+# Data path. adjust them!
+common:
+   image_file:  "/home/harry/data/X2-1166/0215/image/8r.jpg"
+   pcd_file:    "/home/harry/data/X2-1166/0215/pcd/8.txt"
+
+   result_file: "/home/harry/data/X2-1166/0215/result/extrinsic.txt"
+   pnp_file:    "/home/harry/data/X2-1166/0215/result/pnp.txt"
+
+# Camera Parameters. Adjust them!
+camera:
+
+# X2-1166 更换相机后内参
+  camera_matrix: [ 4.06921e+03 , 0.0,      2.96767e+03 ,
+                  0.0,    4.06921e+03,   1.91228e+03,
+                  0.0,     0.0,      1.0     ]
+  dist_coeffs: [ -0.0729154, 0.104495, -0.00238498, -9.4681e-06, -0.00272189]
+
+# Calibration Parameters.!
+calib:
+    calib_config_file: "/home/harry/catkin_ws/ws_livox_camera_calib/src/livox_camera_calib/config/config_outdoor.yaml"
+    use_rough_calib: true # set true if your initial_extrinsic is bad
+    use_ada_voxel: false
+    calib_en : true
+    T_opt : true
+
+# 外参
+ExtrinsicMat:
+  data: [ -0.00352368,0.999864,0.0160848,0.0149748,
+          0.00500509,-0.0160671,0.999858,0.0432391,
+          0.999981,0.00360369,-0.0049478,-0.000869748,
+          0,0,0,1     ]
+
+# Params for Canny Edge Extraction
+Canny:
+    gray_threshold: 10
+    len_threshold: 200
+
+# Params for Voxel Cutting & Plane Fitting & Edge Extraction
+Voxel:
+    size: 0.5
+    down_sample_size: 0.05
+
+Voxel_auto:
+    size: 4
+
+Plane:
+    min_points_size: 30
+    normal_theta_min: 30
+    normal_theta_max: 150
+    max_size: 8
+
+Ransac:   
+    dis_threshold: 0.02
+    iter_num: 100
+
+Edge:
+    min_dis_threshold: 0.03
+    max_dis_threshold: 0.06
+
+# Params for color point clouds
+Color:
+    dense: 0.1
+    intensity_threshold: 5
+    
+
+
