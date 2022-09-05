@@ -806,7 +806,10 @@ int CameraIMU_ExtPara_Cal(LidarIMU_ExtPara &paraL, CameraIMU_ExtPara &paraC, Vec
 
   //计算Camera和IMU之间小角度
   C2 = C1 * Cbs.transpose() * R.transpose() * Cbc;
-  vcs = C2.eulerAngles(2, 1, 0);
+  // vcs = C2.eulerAngles(2, 1, 0);
+  vcs(0) = atan2(C2(2,1), C2(2,2));
+  vcs(1) = -asin(C2(2,0));
+  vcs(2) = atan2(C2(1,0), C2(0,0));
   vcs = vcs * 180 / M_PI;
 
   return 0;
