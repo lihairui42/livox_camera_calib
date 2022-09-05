@@ -1,5 +1,5 @@
 <launch>
-  <rosparam command="load" file="/home/harry/data/config/$(arg calibfile).yaml" />
+  <rosparam command="load" file="$(arg calibfile).yaml" />
   <node 
     pkg="livox_camera_calib"
     type="lidar_camera_calib"
