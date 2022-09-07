@@ -353,11 +353,7 @@ public:
 
   Calibration(const std::string &image_file,
                          const std::string &pcd_file,
-                         const std::string &calib_config_file,bool use_ada_voxel);
-
-  Calibration(const std::string &image_file,
-                         const std::string &pcd_file,
-                         const std::string &calib_config_file,bool use_ada_voxel, Config_OutDoor &outConfig);
+                         bool use_ada_voxel, Config_OutDoor &outConfig);
 
   void projectLine(const Plane* plane1, const Plane* plane2, std::vector<Eigen::Vector3d>& line_point);
   
@@ -425,69 +421,16 @@ public:
   void mergePlane(std::vector<Plane*>& origin_list, std::vector<Plane*>& merge_list);
 };
 
-/*********************构造函数1*****************/
+
+
+/*********************构造函数*****************/
 /*构造函数**************************************/
 /*读取image************************************/
 /*读取pcd**************************************/
 /*********************************************/
 Calibration::Calibration(const std::string &image_file,
                          const std::string &pcd_file,
-                         const std::string &calib_config_file,bool use_ada_voxel)  {
- 
-  lidar_edge_clouds = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
-  //bool use_ada_voxel = false;
-  loadCalibConfig(calib_config_file);
-
-   //读取image文件
-  image_ = cv::imread(image_file, cv::IMREAD_UNCHANGED);
-  
-  //判断是否iamge是否读取成功
-  if (!image_.data) {
-    std::string msg = "Can not load image from " + image_file;
-    ROS_ERROR_STREAM(msg.c_str());
-    exit(-1);
-  } else {
-    std::string msg = "Sucessfully load image!";
-    ROS_INFO_STREAM(msg.c_str());
-  }
-
-  //image的宽度和高度
-  width_ = image_.cols;
-  height_ = image_.rows;
-  cout<< "width_:"<<width_<<endl;
-  cout<< "height_:"<<height_<<endl;  
-
-  
-  //打开点云文件
-  std::fstream file_;
-  file_.open(pcd_file, ios::in);
-  if (!file_) {
-    cout << "Point Cloud File " << pcd_file << " does not exit" << endl;
-    return;
-  }
-
-  //读取点云文件
-  raw_lidar_cloud_ = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
-  ROS_INFO_STREAM("Loading point cloud from pcd file.");
-  int cloudCount=0;
-  while(!file_.eof())
-  {
-    pcl::PointXYZI p;
-    file_>>p.x>>p.y>>p.z>>p.intensity;
-    raw_lidar_cloud_->points.push_back(p);
-    ++cloudCount;
-  }
-  cout<<"Read Point End"<<cloudCount<< endl;;
-};
-
-/*********************构造函数2*****************/
-/*构造函数**************************************/
-/*读取image************************************/
-/*读取pcd**************************************/
-/*********************************************/
-Calibration::Calibration(const std::string &image_file,
-                         const std::string &pcd_file,
-                         const std::string &calib_config_file, bool use_ada_voxel,
+                         bool use_ada_voxel,
                          Config_OutDoor &outConfig)  {
  
   lidar_edge_clouds = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);

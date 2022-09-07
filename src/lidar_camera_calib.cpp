@@ -29,8 +29,8 @@ string opt_pnp_file;
 string residual_file;
 
 // Camera config
-vector<double> camera_matrix;
-vector<double> dist_coeffs;
+double camera_matrix[9];
+double dist_coeffs[5];
 double width;
 double height;
 
@@ -42,7 +42,6 @@ bool T_opt;
 cv::Mat imageCalibration;
 cv::Mat imageCalibration_pnp;
 
-string calib_config_file;
 // instrins matrix
 Eigen::Matrix3d inner;
 // Distortion coefficient
@@ -277,12 +276,10 @@ int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf, LidarIMU_ExtPar
 
   nh.param<string>("common/result_file", result_file, "");
   nh.param<string>("common/pnp_file", pnp_file, "");
-  nh.param<vector<double>>("camera/camera_matrix", camera_matrix, vector<double>());
-  nh.param<vector<double>>("camera/dist_coeffs", dist_coeffs, vector<double>());
+
   nh.param<bool>("calib/use_rough_calib", use_rough_calib, false);
   nh.param<bool>("calib/calib_en", calib_en, false);
   nh.param<bool>("calib/T_opt", T_opt, false);
-  nh.param<string>("calib/calib_config_file", calib_config_file, "");
   nh.param<bool>("calib/use_ada_voxel", use_ada_voxel, false);
 
   std::cout << "image_file path:" << image_file << std::endl;
@@ -326,37 +323,20 @@ int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf, LidarIMU_ExtPar
   nh.param<double>("LidarIMU/roll", paraL.roll, 0); 
   nh.param<double>("LidarIMU/pitch", paraL.pitch, 0); 
   nh.param<double>("LidarIMU/yaw", paraL.yaw, -90);
-  nh.param<double>("LidarIMU/deltaRoll", paraL.deltaRoll, 0); 
-  nh.param<double>("LidarIMU/deltaPitch", paraL.deltaPitch, 0); 
-  nh.param<double>("LidarIMU/deltaYaw", paraL.deltaYaw, 0); 
-  nh.param<double>("LidarIMU/deltaX", paraL.deltaX, 0); 
-  nh.param<double>("LidarIMU/deltaY", paraL.deltaY, 0); 
-  nh.param<double>("LidarIMU/deltaZ", paraL.deltaZ, 0); 
 
   double D2R = M_PI / 180;
   paraL.roll = paraL.roll * D2R;
   paraL.pitch = paraL.pitch * D2R;
   paraL.yaw = paraL.yaw * D2R;
-  paraL.deltaRoll = paraL.deltaRoll * D2R;
-  paraL.deltaPitch = paraL.deltaPitch * D2R;
-  paraL.deltaYaw = paraL.deltaYaw * D2R;
 
   //Camara IMU外参
   nh.param<double>("CameraIMU/roll", paraC.roll, 0); 
   nh.param<double>("CameraIMU/pitch", paraC.pitch, 0); 
   nh.param<double>("CameraIMU/yaw", paraC.yaw, -90);
-  nh.param<double>("CameraIMU/deltaRoll", paraC.deltaRoll, 0); 
-  nh.param<double>("CameraIMU/deltaPitch", paraC.deltaPitch, 0); 
-  nh.param<double>("CameraIMU/deltaYaw", paraC.deltaYaw, 0); 
-  nh.param<double>("CameraIMU/deltaX", paraC.deltaX, 0); 
-  nh.param<double>("CameraIMU/deltaY", paraC.deltaY, 0); 
-  nh.param<double>("CameraIMU/deltaZ", paraC.deltaZ, 0); 
+
   paraC.roll = paraC.roll * D2R;
   paraC.pitch = paraC.pitch * D2R;
   paraC.yaw = paraC.yaw * D2R;
-  paraC.deltaRoll = paraC.deltaRoll * D2R;
-  paraC.deltaPitch = paraC.deltaPitch * D2R;
-  paraC.deltaYaw = paraC.deltaYaw * D2R;
 
   return 0;
 }
@@ -953,7 +933,7 @@ int main(int argc, char **argv) {
 
   //构造函数：读取image和pcd
   // Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel);
-  Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel, outConfig);
+  Calibration calibra(image_file, pcd_file,use_ada_voxel, outConfig);
 
   //相机内参
   cv::Mat camera_matrix_=cv::Mat::eye(3, 3, CV_64F);
@@ -1055,5 +1035,4 @@ int main(int argc, char **argv) {
     }
 
   return 0;
-
 }
