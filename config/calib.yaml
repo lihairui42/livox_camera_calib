@@ -2,6 +2,8 @@
 common:
    image_file:      "/home/harry/data/X2-1166/0215/image/8r.jpg"
    pcd_file:        "/home/harry/data/X2-1166/0215/pcd/8.txt"
+   opencv_file:     "/home/harry/data/X2-1166/0215/para/opencv.xml"
+   Lidar_IMU_file:  "/home/harry/data/X2-1166/0215/para/Initialization_result.txt"
 
    result_file:     "/home/harry/data/X2-1166/0215/result/extrinsic.txt"
    pnp_file:        "/home/harry/data/X2-1166/0215/result/pnp.txt"
@@ -10,7 +12,7 @@ common:
    rough_file:      "/home/harry/data/X2-1166/0215/result/rough.jpg"
    opt_file:        "/home/harry/data/X2-1166/0215/result/opt.jpg"
    opt_pnp_file:    "/home/harry/data/X2-1166/0215/result/opt_pnp.jpg"   
-   residual_file:    "/home/harry/data/X2-1166/0215/result/residual_img.jpg"  
+   residual_file:   "/home/harry/data/X2-1166/0215/result/residual_img.jpg"  
 
 # Camera Parameters. Adjust them!
 camera:

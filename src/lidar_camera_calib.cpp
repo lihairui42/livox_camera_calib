@@ -16,6 +16,9 @@ using namespace std;
 // Data path
 string image_file;
 string pcd_file;
+string opencv_file;
+string lidarIMUExtPara_file;
+
 string result_file;
 string pnp_file;
 
@@ -269,6 +272,9 @@ int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf, LidarIMU_ExtPar
 {
   nh.param<string>("common/image_file", image_file, "");
   nh.param<string>("common/pcd_file", pcd_file, "");
+  nh.param<string>("common/opencv_file", opencv_file, "");
+  nh.param<string>("common/Lidar_IMU_file", lidarIMUExtPara_file, "");
+
   nh.param<string>("common/result_file", result_file, "");
   nh.param<string>("common/pnp_file", pnp_file, "");
   nh.param<vector<double>>("camera/camera_matrix", camera_matrix, vector<double>());
@@ -351,6 +357,115 @@ int Yaml_Para_Deal(ros::NodeHandle &nh, Config_OutDoor &outConf, LidarIMU_ExtPar
   paraC.deltaRoll = paraC.deltaRoll * D2R;
   paraC.deltaPitch = paraC.deltaPitch * D2R;
   paraC.deltaYaw = paraC.deltaYaw * D2R;
+
+  return 0;
+}
+
+/**********************************************/
+/*Opencv XML文件读取内参*************************/
+/**********************************************/
+int Camera_OpencvPara_Deal(string opencv_file)
+{
+  cv::FileStorage fs;   
+  fs.open(opencv_file, FileStorage::READ);
+  if(!fs.isOpened())
+  {
+    std::cout << "Camera para .xml file open failed!";
+    return -1;
+  }
+
+  cv::Mat M1, M2;
+  fs["Camera_Matrix"] >> M1;
+  camera_matrix[0] = M1.at<double>(0 ,0);
+  camera_matrix[4] = M1.at<double>(1 ,1);
+  camera_matrix[2] = M1.at<double>(0 ,2);
+  camera_matrix[5] = M1.at<double>(1 ,2);
+  camera_matrix[8] = 1;
+
+  fs["Distortion_Coefficients"] >> M2;
+  dist_coeffs[0] = M2.at<double>(0);
+  dist_coeffs[1] = M2.at<double>(1);
+  dist_coeffs[2] = M2.at<double>(2);
+  dist_coeffs[3] = M2.at<double>(3);
+  dist_coeffs[4] = M2.at<double>(4);
+
+  std::cout << "Camera_Matrix:" << std::endl;
+  std::cout << camera_matrix[0] << "    "
+            << camera_matrix[1] << "    "
+            << camera_matrix[2] << "    " << std::endl;
+  std::cout << camera_matrix[3] << "    "
+            << camera_matrix[4] << "    "
+            << camera_matrix[5] << "    " << std::endl;
+  std::cout << camera_matrix[6] << "    "
+            << camera_matrix[7] << "    "
+            << camera_matrix[8] << "    "<< std::endl;
+
+  std::cout << "dist_coeffs:" << std::endl;
+  std::cout << dist_coeffs[0] << "    "
+            << dist_coeffs[1] << "    "
+            << dist_coeffs[2] << "    "
+            << dist_coeffs[3] << "    "
+            << dist_coeffs[4] << "    "<< std::endl;
+
+  return 0;
+}
+
+/**********************************************/
+/*Opencv XML文件读取内参*************************/
+/**********************************************/
+int Lidar_IMU_ExtPara_Deal(string lidarIMUExtPara_file, LidarIMU_ExtPara &paraL)
+{
+  vector<double> dd;
+
+  std::fstream file_;
+  file_.open(lidarIMUExtPara_file, ios::in);
+  if (!file_) {
+    cout << "Lidar-IMU extern para file: " << lidarIMUExtPara_file << " open failed" << endl;
+    return -1;
+  }
+
+  std::string line, line0;
+  int equ_i = 0;
+  std::getline(file_, line);
+  if(!file_.eof())
+  {
+    std::getline(file_, line);
+
+    //寻找等号
+    for(int i=0; i<line.length(); i++)
+    {
+      if(line[i] == '=')
+      {
+        equ_i = i;
+        break;
+      } 
+    }
+
+    line0 = line.substr(equ_i+1, line.length()-1);
+
+    istringstream devide(line0);
+    string word;
+    while(devide >> word)
+    {
+      dd.push_back(std::atof(word.c_str()));
+    }
+  }
+
+  if(isfinite(dd[0]) && isfinite(dd[1]) && isfinite(dd[2]))
+  {
+    double D2R = M_PI / 180;
+    paraL.deltaRoll = dd[2] * D2R;
+    paraL.deltaPitch = dd[1] * D2R;
+    paraL.deltaYaw = dd[0] * D2R;
+    std::cout << "Lidar-IMU Extern Para(roll-pitch-yaw):  "<< dd[2] << "  "<< dd[1] << "  "<< dd[0] << endl;
+  }
+  else
+  {
+    paraL.deltaRoll = 0;
+    paraL.deltaPitch = 0;
+    paraL.deltaYaw = 0;
+    std::cout << "Lidar-IMU Extern Para invalid, all set to 0:  "<< 0 << "  "<< 0 << "  "<< 0 << endl;
+  }
 
   return 0;
 }
@@ -828,8 +943,13 @@ int main(int argc, char **argv) {
   Config_OutDoor      outConfig;
   LidarIMU_ExtPara    paraExtLidarIMU;
   CameraIMU_ExtPara   paraExtCameraIMU;
-
   Yaml_Para_Deal(nh, outConfig, paraExtLidarIMU, paraExtCameraIMU);
+
+  //读取Opencv Camera内参
+  Camera_OpencvPara_Deal(opencv_file);
+
+  //读取Lidar-IMU外参
+  Lidar_IMU_ExtPara_Deal(lidarIMUExtPara_file, paraExtLidarIMU);
 
   //构造函数：读取image和pcd
   // Calibration calibra(image_file, pcd_file, calib_config_file,use_ada_voxel);
