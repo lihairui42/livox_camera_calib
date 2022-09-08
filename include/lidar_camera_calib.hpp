@@ -456,27 +456,20 @@ Calibration::Calibration(const std::string &image_file,
   cout<< "width_:"<<width_<<endl;
   cout<< "height_:"<<height_<<endl;  
 
-  
-  //打开点云文件
-  std::fstream file_;
-  file_.open(pcd_file, ios::in);
-  if (!file_) {
-    cout << "Point Cloud File " << pcd_file << " does not exit" << endl;
-    return;
-  }
 
   //读取点云文件
   raw_lidar_cloud_ = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
   ROS_INFO_STREAM("Loading point cloud from pcd file.");
-  int cloudCount=0;
-  while(!file_.eof())
-  {
-    pcl::PointXYZI p;
-    file_>>p.x>>p.y>>p.z>>p.intensity;
-    raw_lidar_cloud_->points.push_back(p);
-    ++cloudCount;
+  if (!pcl::io::loadPCDFile(pcd_file, *raw_lidar_cloud_)) {
+    // down_sampling_voxel(*raw_lidar_cloud_, 0.02);
+    std::string msg = "Sucessfully load pcd, pointcloud size: " +
+                      std::to_string(raw_lidar_cloud_->size());
+    ROS_INFO_STREAM(msg.c_str());
+  } else {
+    std::string msg = "Unable to load " + pcd_file;
+    ROS_ERROR_STREAM(msg.c_str());
+    exit(-1);
   }
-  cout<<"Read Point End"<<cloudCount<< endl;;
 };
 
 bool Calibration::loadCameraConfig(const std::string &camera_file) {
