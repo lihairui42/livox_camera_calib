@@ -17,6 +17,16 @@ struct VPnPData {
   int number;
 };
 
+
+typedef struct SinglePlane
+{
+    pcl::PointCloud<pcl::PointXYZI> cloud;
+    pcl::PointXYZ p_center;
+    Eigen::Vector3d normal;
+    int index;
+} SinglePlane;
+
+
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 //存放每一个点的索引值和其对应的曲率
 typedef struct PCURVATURE {
@@ -25,12 +35,33 @@ typedef struct PCURVATURE {
   float curvature;
 } PCURVATURE;
 
-typedef struct Plane {
-  pcl::PointCloud<pcl::PointXYZI> cloud;
-  pcl::PointXYZ p_center;
-  Eigen::Vector3d normal;
-  int index;
+// typedef struct Plane {
+//   pcl::PointCloud<pcl::PointXYZI> cloud;
+//   pcl::PointXYZ p_center;
+//   Eigen::Vector3d normal;
+//   int index;
+// } Plane;
+
+typedef struct Plane
+{
+    pcl::PointXYZINormal p_center;
+    Eigen::Vector3d center;
+    Eigen::Vector3d normal;
+    Eigen::Matrix3d covariance;
+    std::vector<Eigen::Vector3d> plane_points;
+    float radius = 0;
+    float min_eigen_value = 1;
+    float d = 0;
+    int points_size = 0;
+    bool is_plane = false;
+    bool is_init = false;
+    int id;
+    bool is_update = false;
 } Plane;
+
+
+
+
 
 class VOXEL_LOC {
 public:
@@ -121,7 +152,7 @@ template <class T> void calc(T matrix[4][5], Eigen::Vector3d &solution) {
 // Similar with PCL voxelgrid filter
 void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
                          double voxel_size) {
-  int intensity = rand() % 255;
+  // int intensity = rand() % 255;
   if (voxel_size < 0.01) {
     return;
   }
@@ -167,6 +198,51 @@ void down_sampling_voxel(pcl::PointCloud<pcl::PointXYZI> &pl_feat,
     pl_feat[i].y = iter->second.xyz[1] / iter->second.count;
     pl_feat[i].z = iter->second.xyz[2] / iter->second.count;
     pl_feat[i].intensity = iter->second.intensity / iter->second.count;
+    i++;
+  }
+}
+
+void down_sampling_voxel(std::vector<Eigen::Vector3d> &pl_feat,
+                         double voxel_size) {
+  std::unordered_map<VOXEL_LOC, M_POINT> feat_map;
+  uint plsize = pl_feat.size();
+
+  for (uint i = 0; i < plsize; i++) {
+    Eigen::Vector3d &p_c = pl_feat[i];
+    double loc_xyz[3];
+    for (int j = 0; j < 3; j++) {
+      loc_xyz[j] = p_c[j] / voxel_size;
+      if (loc_xyz[j] < 0) {
+        loc_xyz[j] -= 1.0;
+      }
+    }
+
+    VOXEL_LOC position((int64_t)loc_xyz[0], (int64_t)loc_xyz[1],
+                       (int64_t)loc_xyz[2]);
+    auto iter = feat_map.find(position);
+    if (iter != feat_map.end()) {
+      iter->second.xyz[0] += p_c[0];
+      iter->second.xyz[1] += p_c[1];
+      iter->second.xyz[2] += p_c[2];
+      iter->second.count++;
+    } else {
+      M_POINT anp;
+      anp.xyz[0] = p_c[0];
+      anp.xyz[1] = p_c[1];
+      anp.xyz[2] = p_c[2];
+      anp.count = 1;
+      feat_map[position] = anp;
+    }
+  }
+
+  plsize = feat_map.size();
+  pl_feat.resize(plsize);
+
+  uint i = 0;
+  for (auto iter = feat_map.begin(); iter != feat_map.end(); ++iter) {
+    pl_feat[i][0] = iter->second.xyz[0] / iter->second.count;
+    pl_feat[i][1] = iter->second.xyz[1] / iter->second.count;
+    pl_feat[i][2] = iter->second.xyz[2] / iter->second.count;
     i++;
   }
 }

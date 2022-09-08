@@ -1,17 +1,18 @@
 # Data path. adjust them!
 common:
-    image_path:  "/home/ycj/data/calib/image/old"
-    pcd_path:  "/home/ycj/data/calib/pcd/old"
-    result_path:  "/home/ycj/data/calib/extrinsic.txt"
-    data_num: 3
+    image_path:  "/work/catkin_ws_test/data/multi/X2-1166/0222/image"
+    pcd_path:  "/work/catkin_ws_test/data/multi/X2-1166/0222/pcd"
+    result_path:  "/work/catkin_ws_test/src/livox_camera_calib/result/extrinsic.txt"
+    data_num: 4
 # Camera Parameters. Adjust them!
 camera:
-    camera_matrix: [1704.1857 , 0.0,      886.5115,
-                    0.0,     1719.5228,  467.9244,
-                    0.0,     0.0,      1.0     ]
-    dist_coeffs: [-0.0963, 0.0708, 0.0011, -0.0017, 0.000000]
+    camera_matrix: [4.06087381023129228e+03 , 0.0,      2.96248695887525173e+03 ,
+                    0.0,     4.06087381023129228e+03 ,  1.95632311274262702e+03 ,
+                   0.0,     0.0,      1.0     ]
+    dist_coeffs: [-6.55033298253820534e-02 ,8.55214001114436434e-02 ,-3.96664569433971190e-04, 9.97967793898066682e-03, 1.70969205863955530e-03 ]
 
 # Calibration Parameters.!
 calib:
-    calib_config_file: "/home/ycj/catkin_ws/src/livox_camera_calib/config/config_outdoor.yaml"
+    calib_config_file: "/work/catkin_ws_test/src/livox_camera_calib/config/config_outdoor.yaml"
     use_rough_calib: true # set true if your initial_extrinsic is bad
+    use_ada_voxel: false

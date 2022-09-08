@@ -9,6 +9,16 @@ add_compile_options(-std=c++14)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
+# set(CMAKE_BUILD_TYPE "Release")
+# set(CMAKE_CXX_FLAGS "-std=c++11")
+# set(CMAKE_CXX_FLAGS_RELEASE "-O3 -Wall -g")
+# set (CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -g")
+
+SET(CMAKE_BUILD_TYPE "Debug")
+SET(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb")
+SET(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall")
+
+
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   pcl_conversions
@@ -43,16 +53,12 @@ include_directories(
 )
 
 add_executable(lidar_camera_calib src/lidar_camera_calib.cpp include/lidar_camera_calib.hpp)
-add_executable(lidar_camera_multi_calib src/lidar_camera_multi_calib.cpp include/lidar_camera_calib.hpp)
-add_executable(bag_to_pcd src/bag_to_pcd.cpp)
+# add_executable(lidar_camera_multi_calib src/lidar_camera_multi_calib.cpp include/lidar_camera_calib.hpp)
+
 target_link_libraries(lidar_camera_calib 
   ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_LIBRARIES} ${CERES_LIBRARIES}
 )
 
-target_link_libraries(lidar_camera_multi_calib 
-  ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_LIBRARIES} ${CERES_LIBRARIES}
-)
-
-target_link_libraries(bag_to_pcd 
-  ${catkin_LIBRARIES}  ${PCL_LIBRARIES}
-)
+# target_link_libraries(lidar_camera_multi_calib 
+#   ${catkin_LIBRARIES} ${OpenCV_LIBS} ${PCL_LIBRARIES} ${CERES_LIBRARIES}
+# )
