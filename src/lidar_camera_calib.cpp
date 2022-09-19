@@ -232,7 +232,8 @@ void roughCalib(Calibration &calibra, Vector6d &calib_params, //定义粗校准�
        }
        ROS_INFO(" const_numr %d",const_num);
        ROS_INFO(" Rougn calibration number %d",iter);
-       std::cout << "校准角度:"<<round <<" 粗校姿态角（ypr）:" << RAD2DEG(calib_params(0)) <<' '<< RAD2DEG(calib_params(1)) <<' '<< RAD2DEG(calib_params(2))<<endl;
+       std::cout << "校准角度:"<<round <<" 粗校步进 (ypr):" << RAD2DEG(adjust_euler(0)) <<' '<< RAD2DEG(adjust_euler(1)) <<' '<< RAD2DEG(adjust_euler(2))<<endl;
+       std::cout << "校准角度:"<<round <<" 粗校姿态角(ypr):" << RAD2DEG(calib_params(0)) <<' '<< RAD2DEG(calib_params(1)) <<' '<< RAD2DEG(calib_params(2))<<endl;
       }
     }
   }
@@ -754,7 +755,10 @@ int  OptResult(Calibration &calibra,
   outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl << std::endl;
 
   outfile << "Camera-Lisar的小角度欧拉角(yaw-pitch-roll):" <<  std::endl;
-  Eigen::Vector3d adjust_euler = adjust_rotation.eulerAngles(2, 1, 0); //输出顺序为分别绕 ZYX轴的旋转角
+  Eigen::Vector3d adjust_euler;
+  adjust_euler(2) = atan2(adjust_rotation(2,1), adjust_rotation(2,2));
+  adjust_euler(1) = -asin(adjust_rotation(2,0));
+  adjust_euler(0) = atan2(adjust_rotation(1,0), adjust_rotation(0,0));
   outfile << RAD2DEG(adjust_euler[0]) << "," << RAD2DEG(adjust_euler[1]) << ","
           << RAD2DEG(adjust_euler[2]) << "," << 0 << "," << 0 << "," << 0
           << std::endl << std::endl;
@@ -763,18 +767,6 @@ int  OptResult(Calibration &calibra,
   outfile << "delta Roll : " <<  vcs(2) << std::endl;
   outfile << "delta pitch: " <<  vcs(1) << std::endl;
   outfile << "delta yaw  : " <<  vcs(0) << std::endl;
-  // double angel_X=0.0;
-  // double angel_Y=0.0;
-  // double angel_Z=0.0;
-  // double temp=0.0;
-
-  // angel_X= atan2(adjust_rotation(2,1),adjust_rotation(2,2));      //Cnb：激光器和惯导的安置角
-  
-  // temp= (adjust_rotation(2,0))/sqrt(1-pow(adjust_rotation(2,0),2));  
-  // angel_Y= -atan(temp);
-  // angel_Z = atan2(adjust_rotation(1,0),adjust_rotation(0,0));
-  // outfile<<"angel_X, angel_Y,angel_Z:" << RAD2DEG(angel_X) << "," << RAD2DEG(angel_Y) << ","
-  //           << RAD2DEG(angel_Z) << std::endl;
 
   time_t t3 = clock();
   std::cout << "总校准时间:" << (double)(t3 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
