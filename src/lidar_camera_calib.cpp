@@ -165,11 +165,11 @@ void roughCalib(Calibration &calibra, Vector6d &calib_params, //定义粗校准�
   int const_num= 0;
   Eigen::Vector3d fix_adjust_euler(0, 0, 0);    //声明欧拉初始矩阵
   for (int n = 0; n < 2; n++) {
-    if(n>0)
-    {
-      search_resolution=search_resolution/10;
-      max_iter=max_iter*10/2;
-    }
+    // if(n>0)
+    // {
+    //   search_resolution=search_resolution/10;
+    //   max_iter=max_iter*10/2;
+    // }
 
     for (int round = 0; round < 3; round++) {
       Eigen::Matrix3d rot;//待优化变量rot
@@ -232,7 +232,8 @@ void roughCalib(Calibration &calibra, Vector6d &calib_params, //定义粗校准�
        }
        ROS_INFO(" const_numr %d",const_num);
        ROS_INFO(" Rougn calibration number %d",iter);
-       std::cout << "校准角度:"<<round <<" 粗校姿态角（ypr）:" << RAD2DEG(calib_params(0)) <<' '<< RAD2DEG(calib_params(1)) <<' '<< RAD2DEG(calib_params(2))<<endl;
+       std::cout << "校准角度:"<<round <<" 粗校步进 (ypr):" << RAD2DEG(adjust_euler(0)) <<' '<< RAD2DEG(adjust_euler(1)) <<' '<< RAD2DEG(adjust_euler(2))<<endl;
+       std::cout << "校准角度:"<<round <<" 粗校姿态角(ypr):" << RAD2DEG(calib_params(0)) <<' '<< RAD2DEG(calib_params(1)) <<' '<< RAD2DEG(calib_params(2))<<endl;
       }
     }
   }
@@ -590,11 +591,11 @@ void OptCalib(Calibration &calibra,
   int iter = 0;
   // Maximum match distance threshold: 15 pixels
   // If initial extrinsic lead to error over 15 pixels, the algorithm will not work
-  int dis_threshold = 50; 
+  int dis_threshold = 30; 
 
   //不是通过迭代次数决定处理时间，而是通过dis_threshold（边缘点云与图像边缘点云距离最大值）
   // Iteratively reducve the matching distance threshold
-  for (dis_threshold = 25; dis_threshold > 3; dis_threshold -= 1) {
+  for (dis_threshold = 30; dis_threshold > 10; dis_threshold -= 1) {
     
     // For each distance, do twice optimization
     for (int cnt = 0; cnt < 2; cnt++) {
@@ -609,7 +610,13 @@ void OptCalib(Calibration &calibra,
       cv::resize(projection_img,projection_img_show,cv::Size(1280,720));
       cv::imshow("Optimization", projection_img_show);
       cv::waitKey(100);
-      Eigen::Quaterniond q(R);
+      Eigen::Vector3d euler_angle(calib_params[0], calib_params[1],
+                                  calib_params[2]);
+      Eigen::Matrix3d opt_init_R;
+      opt_init_R = Eigen::AngleAxisd(euler_angle[0], Eigen::Vector3d::UnitZ()) *
+                   Eigen::AngleAxisd(euler_angle[1], Eigen::Vector3d::UnitY()) *
+                   Eigen::AngleAxisd(euler_angle[2], Eigen::Vector3d::UnitX());
+      Eigen::Quaterniond q(opt_init_R);
       Eigen::Vector3d ori_t = T;
       double ext[7];
       ext[0] = q.x();
@@ -656,7 +663,7 @@ void OptCalib(Calibration &calibra,
       std::cout << summary.BriefReport() << std::endl;
       
       Eigen::Matrix3d rot = m_q.toRotationMatrix();
-      Eigen::Vector3d euler_angle = rot.eulerAngles(2, 1, 0);
+      euler_angle = rot.eulerAngles(2, 1, 0);
       // std::cout << m_t << std::endl;
       calib_params[0] = euler_angle[0];
       calib_params[1] = euler_angle[1];
@@ -679,20 +686,20 @@ void OptCalib(Calibration &calibra,
       std::cout << "精细调整旋转矩阵后:"<< euler_angle[0] <<' '<<euler_angle[1] <<' '<< euler_angle[2] << std::endl;   //输出旋转矩阵
       std::cout << "精细调整位置后:"<< T[0] <<' '<< T[1] <<' '<< T[2] << std::endl;      
 
-      if(iter>1)
-      {
-        if ( 0 && ((opt_q.angularDistance(q) < DEG2RAD(0.01) &&
-            (T - ori_t).norm() < 0.005)||( opt_q.angularDistance(q) > DEG2RAD(0.5))) )
-        {
-            opt_flag = false;
-        }
-        else
-        {
-          if ((opt_q.angularDistance(q) < DEG2RAD(0.03)) || (opt_q.angularDistance(q) > DEG2RAD(0.08))) {
-              opt_flag = false;
-          }
-        }
-      }
+      // if(iter>1)
+      // {
+      //   if ( 0 && ((opt_q.angularDistance(q) < DEG2RAD(0.01) &&
+      //       (T - ori_t).norm() < 0.005)||( opt_q.angularDistance(q) > DEG2RAD(0.5))) )
+      //   {
+      //       opt_flag = false;
+      //   }
+      //   else
+      //   {
+      //     if ((opt_q.angularDistance(q) < DEG2RAD(0.03)) || (opt_q.angularDistance(q) > DEG2RAD(0.08))) {
+      //         opt_flag = false;
+      //     }
+      //   }
+      // }
       if (!opt_flag) {
             break;
       }
@@ -712,7 +719,7 @@ int  OptResult(Calibration &calibra,
                 Eigen::Matrix3d &R, Eigen::Vector3d &T, 
                 time_t &t1, 
                cv::Mat &opt_img, cv::Mat &opt_img_show,
-               Eigen::Vector3d &vcs)    
+               Eigen::Vector3d &vcs, Eigen::Matrix3d &Csc0)    
 {
   R = Eigen::AngleAxisd(calib_params[0], Eigen::Vector3d::UnitZ()) *
           Eigen::AngleAxisd(calib_params[1], Eigen::Vector3d::UnitY()) *
@@ -741,8 +748,7 @@ int  OptResult(Calibration &calibra,
 
   cv::waitKey(1000);
 
-  Eigen::Matrix3d init_rotation;
-  init_rotation << 0, 1.0, 0, 0, 0, 1.0, 1, 0, 0;
+  Eigen::Matrix3d init_rotation = Csc0;
   Eigen::Matrix3d adjust_rotation;
   
   outfile << "Camera-Lisar的小角度旋转矩阵:" <<  std::endl;
@@ -754,7 +760,10 @@ int  OptResult(Calibration &calibra,
   outfile << 0 << "," << 0 << "," << 0 << "," << 1 << std::endl << std::endl;
 
   outfile << "Camera-Lisar的小角度欧拉角(yaw-pitch-roll):" <<  std::endl;
-  Eigen::Vector3d adjust_euler = adjust_rotation.eulerAngles(2, 1, 0); //输出顺序为分别绕 ZYX轴的旋转角
+  Eigen::Vector3d adjust_euler;
+  adjust_euler(2) = atan2(adjust_rotation(2,1), adjust_rotation(2,2));
+  adjust_euler(1) = -asin(adjust_rotation(2,0));
+  adjust_euler(0) = atan2(adjust_rotation(1,0), adjust_rotation(0,0));
   outfile << RAD2DEG(adjust_euler[0]) << "," << RAD2DEG(adjust_euler[1]) << ","
           << RAD2DEG(adjust_euler[2]) << "," << 0 << "," << 0 << "," << 0
           << std::endl << std::endl;
@@ -763,18 +772,6 @@ int  OptResult(Calibration &calibra,
   outfile << "delta Roll : " <<  vcs(2) << std::endl;
   outfile << "delta pitch: " <<  vcs(1) << std::endl;
   outfile << "delta yaw  : " <<  vcs(0) << std::endl;
-  // double angel_X=0.0;
-  // double angel_Y=0.0;
-  // double angel_Z=0.0;
-  // double temp=0.0;
-
-  // angel_X= atan2(adjust_rotation(2,1),adjust_rotation(2,2));      //Cnb：激光器和惯导的安置角
-  
-  // temp= (adjust_rotation(2,0))/sqrt(1-pow(adjust_rotation(2,0),2));  
-  // angel_Y= -atan(temp);
-  // angel_Z = atan2(adjust_rotation(1,0),adjust_rotation(0,0));
-  // outfile<<"angel_X, angel_Y,angel_Z:" << RAD2DEG(angel_X) << "," << RAD2DEG(angel_Y) << ","
-  //           << RAD2DEG(angel_Z) << std::endl;
 
   time_t t3 = clock();
   std::cout << "总校准时间:" << (double)(t3 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
@@ -877,7 +874,7 @@ void OptOuter(Calibration &calibra, vector<Point3f> &points_3D, vector<Point2f> 
 /**********************************************/
 /*计算外参**************************************/
 /**********************************************/
-int CameraIMU_ExtPara_Cal(LidarIMU_ExtPara &paraL, CameraIMU_ExtPara &paraC, Vector6d &calib_params, Eigen::Matrix3d &R, Eigen::Vector3d &vcs)
+int CameraIMU_ExtPara_Cal(LidarIMU_ExtPara &paraL, CameraIMU_ExtPara &paraC, Vector6d &calib_params, Eigen::Matrix3d &R, Eigen::Vector3d &vcs, Eigen::Matrix3d &Csc0)
 {
   //Lidar和IMU之间的旋转矩阵
   Eigen::Matrix3d   Cbs, Cbc, C1, C2;
@@ -898,6 +895,9 @@ int CameraIMU_ExtPara_Cal(LidarIMU_ExtPara &paraL, CameraIMU_ExtPara &paraC, Vec
   Cbc = Eigen::AngleAxisd(paraC.yaw, Eigen::Vector3d::UnitZ()) *
         Eigen::AngleAxisd(paraC.pitch, Eigen::Vector3d::UnitY()) *
         Eigen::AngleAxisd(paraC.roll, Eigen::Vector3d::UnitX());
+
+  //Camera-Lisar初始矩阵
+  Csc0 =  Cbc *  Cbs.transpose();    
 
   //计算Camera和IMU之间小角度
   C2 = C1 * Cbs.transpose() * R.transpose() * Cbc;
@@ -978,7 +978,7 @@ int main(int argc, char **argv) {
     //后来改成20（0.1*20）次对最终结果没影响。
     //每个姿态角修正循环50次，为了调试方便，现改成5    
     //VPnn 算法中dis_threshold设置为25,粗校准偏移量不修正，只修正姿态
-    roughCalib(calibra, calib_params, DEG2RAD(1.0),5); 
+    roughCalib(calibra, calib_params, DEG2RAD(0.1),50); 
   }
   time_t t2 = clock();
   std::cout << "粗校准时间:" << (double)(t2 - t1) / (CLOCKS_PER_SEC) << "s" << std::endl;
@@ -1001,20 +1001,21 @@ int main(int argc, char **argv) {
 
   //结果转到IMU系
   Eigen::Vector3d vcs;
-  CameraIMU_ExtPara_Cal(paraExtLidarIMU, paraExtCameraIMU, calib_params, R, vcs);
+  Eigen::Matrix3d Csc0;
+  CameraIMU_ExtPara_Cal(paraExtLidarIMU, paraExtCameraIMU, calib_params, R, vcs, Csc0);
 
   //精校准结果
-  OptResult(calibra, calib_params, R, T, t1, opt_img, opt_img_show, vcs);
+  OptResult(calibra, calib_params, R, T, t1, opt_img, opt_img_show, vcs, Csc0);
 
 
-  //优化内参
-  vector<Point3f> points_3D;
-  vector<Point2f> points_2D;
-  OptInner(points_3D, points_2D, camera_matrix_, dist_coeffs_, vpnp_list, imageSize);
+  // //优化内参
+  // vector<Point3f> points_3D;
+  // vector<Point2f> points_2D;
+  // OptInner(points_3D, points_2D, camera_matrix_, dist_coeffs_, vpnp_list, imageSize);
 
 
-  //计算外参
-   OptOuter(calibra, points_3D, points_2D, camera_matrix_, dist_coeffs_, R, T, imageSize,opt_img, opt_img_show,pnpfile);
+  // //计算外参
+  //  OptOuter(calibra, points_3D, points_2D, camera_matrix_, dist_coeffs_, R, T, imageSize,opt_img, opt_img_show,pnpfile);
 
    while (ros::ok()) {
       sensor_msgs::PointCloud2 pub_cloud;
